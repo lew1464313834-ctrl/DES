@@ -124,7 +124,7 @@
             ((2, 7), "empty"): (2, 7),
         }
 system2:
-                self.state_oringin_system = {0, 1, 2, 3, 4, 5, 6, 7, 8}
+        self.state_oringin_system = {0, 1, 2, 3, 4, 5, 6, 7, 8}
         self.state_supervisor = {0, 1, 2}
         self.state_under_controlled_system = {
             (0, 0),

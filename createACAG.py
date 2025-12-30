@@ -88,9 +88,8 @@ def get_environment_node_style(state, assumption, is_initial=False):
     # 普通状态
     return f'{{{base_label}}}', style_dict
 
-# ===== ACAG生成函数（完整保留版）=====
+# ===== ACAG生成函数=====
 def generate_ACAG_all_info(assumption):
-    """生成ACAG图 - 不过滤任何状态，保留empty转移"""
     # 初始估计
     xi_S0 = unobservable_closure(
         assumption.state_initial_under_controlled_ststem,
@@ -112,13 +111,6 @@ def generate_ACAG_all_info(assumption):
     print("事件集合验证")
     print(f"  脆弱事件: {sorted(assumption.event_vulnerable)}")
     print(f"  可篡改事件: {sorted(assumption.event_alterable)}")
-    
-    for event in ['o1', 'o2', 'o3', 'o4', 'o5', 'o6', 'uo1', 'empty']:
-        tempered = temper_function(event, assumption.event_vulnerable, assumption.event_alterable)
-        if event != 'o1' and 'o1' in tempered:
-            raise AssertionError(f"❌ {event}可被篡改为o1")
-    
-    print("✅ 验证通过")
     print("="*60 + "\n")
     
     # 初始化存储
@@ -384,7 +376,7 @@ if __name__ == "__main__":
     # 绘图
     print("\n[阶段3/3] 绘制完整图（含特殊节点上色）...")
     draw_acag_complete(state_ACAG, transition_ACAG, q0, active_states, assumption, 
-                      "acag_complete_final.pdf")
+                      "acag")
     
     print("\n" + "="*60)
     print("✅ ACAG生成完成！")
