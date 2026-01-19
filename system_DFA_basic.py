@@ -184,7 +184,7 @@ class ClosedLoopSystem:
                                         event_supervisor_controllable,
                                         state_system_secret=None): # 增加秘密状态参数
         
-        dot = Digraph(comment='Closed Loop System', format='png')
+        dot = Digraph(comment='Closed Loop System', format='svg')
         dot.attr(rankdir='LR', size='10')
         dot.attr('node', shape='circle', fixedsize='true', width='0.6')
 
@@ -240,7 +240,7 @@ class ClosedLoopSystem:
                 
                 if target not in visited:
                     queue.append((target, depth + 1))
-
+        dot.render('closed_loop_system.svg', view=False, cleanup=True)
         return dot
     
     # 生成闭环系统的语言
