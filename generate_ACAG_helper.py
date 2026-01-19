@@ -1,8 +1,7 @@
-from collections import deque, defaultdict
-from graphviz import Digraph
+from collections import deque
 
-class HelperFunctionColledtion:
-    #计算攻击者单次不可观测可达集
+class GenerateACAGFunctionTools:
+    #计算单次不可观测可达集
     @staticmethod
     def cal_unobservable_reach(states_current_estimation, 
                                           transition, 
@@ -24,7 +23,7 @@ class HelperFunctionColledtion:
         return frozenset(state_next_estiamtion_supervisor)
 
 
-    # 生成监督器视角的转移关系
+    # 生成监督器视角的所有转移关系
     @staticmethod
     def generate_unobserver_reach_supervisor(states_closed_loop_system, 
                                       transition_closed_loop_system,
@@ -38,7 +37,7 @@ class HelperFunctionColledtion:
         # 1. 找到初始估算集 xi_0
         # 假设 (0,0) 是唯一的物理初始态
         initial_physical_state = (0, 0) 
-        initial_estimation_supervisor = HelperFunctionColledtion.cal_unobservable_reach([initial_physical_state], transition_closed_loop_system, event_ubobservable_supervisor)
+        initial_estimation_supervisor = GenerateACAGFunctionTools.cal_unobservable_reach([initial_physical_state], transition_closed_loop_system, event_ubobservable_supervisor)
 
         # 2. BFS 搜索所有可达的估算集合
         estimation_result_set_supervisor = {}
@@ -59,7 +58,7 @@ class HelperFunctionColledtion:
                 # 如果有转移发生
                 if next_physical_states:
                     # 计算到达状态的不可观测可达集
-                    next_estimate = HelperFunctionColledtion.cal_unobservable_reach(next_physical_states, transition_closed_loop_system, event_ubobservable_supervisor)
+                    next_estimate = GenerateACAGFunctionTools.cal_unobservable_reach(next_physical_states, transition_closed_loop_system, event_ubobservable_supervisor)
                     
                     # 记录转移关系
                     estimation_result_set_supervisor[(curr_estimate, event)] = next_estimate
@@ -69,95 +68,85 @@ class HelperFunctionColledtion:
                         queue.append(next_estimate)
         
         return estimation_result_set_supervisor
-
-    # 生成攻击者视角的转移关系
-
-    def generate_unobserver_reach_attacker(state_initial_origin,
-                                        transition_closed_loop_system, 
-                                        transition_origin_system,
-                                        event_attacker_observable, 
-                                        events_unobservale_attacker
-                                        ):
+    
+    #更新单次监督器预估
+    @staticmethod
+    def update_unobserver_reach_supervisor(estimation_result_set_supervisor,
+                                           current_estimation_supervisor,
+                                           event):
         """
-        生成攻击者视角的转移关系。
+        带攻击检测的监督器预估更新。
+        - 如果当前预估已经是报警状态，保持报警。
+        - 如果验证失败，触发 AX。
+        - 如果验证通过，返回预计算的结果。
+        """
+        # 1. 状态保持：如果已经是报警态，则不再恢复，如果是空事件，则返回原估计
+        if current_estimation_supervisor == frozenset({'AX'}):
+            return frozenset({'AX'})
+        if event == 'empty':
+            return current_estimation_supervisor
+
+        # 2. 查表逻辑：获取预计算好的不可观测闭包
+        # 使用 .get() 防止因攻击者构造了预计算中不存在的异常路径而导致程序崩溃
+        lookup_key = (current_estimation_supervisor, event)
+        next_estimate = estimation_result_set_supervisor.get(lookup_key)
         
-        逻辑：
-        - 遍历分支：基于 transition_closed_loop_system (实际发生了什么)
-        - 状态更新：基于 transition_origin_system (物理上认为可能到哪)
-        """
+        if next_estimate is None:
+            # 如果发生了预计算之外的观测，认为是异常
+            return frozenset({'AX'})
+            
+        return next_estimate
 
-        # 1. 初始不可观测闭包计算 (基于原始系统)
-        # 假设攻击者认为初始状态是物理态 0，他会根据物理模型计算不可观测闭包
-        initial_x_estimation = HelperFunctionColledtion.cal_unobservable_reach(
+    # 生成攻击者视角的所有转移关系
+    @staticmethod
+    def generate_unobserver_reach_attacker(state_initial_origin, 
+                                           transition_origin_system,
+                                           event_attacker_observable, 
+                                           uo_events_attacker):
+        initial_x_view = GenerateACAGFunctionTools.cal_unobservable_reach(
             state_initial_origin, 
             transition_origin_system, 
-            events_unobservale_attacker
+            uo_events_attacker
         )
-        # 转为元组作为 Key
-        initial_x_tuple = tuple(sorted(initial_x_estimation))
 
-        # 2. BFS 初始化
-        # 我们需要同时跟踪：当前的物理预估集(x_set) 和 背后支撑它的闭环状态集(closed_set)
-        # 因为只有闭环状态集能告诉我们“受控系统接下来真正能走什么”
         estimation_result_attacker = {}
-        
-        # 初始闭环种子 (z0, x0)
-        initial_closed_seeds = set((0, x) for x in state_initial_origin)
-        initial_closed_set = HelperFunctionColledtion.cal_unobservable_reach(
-            initial_closed_seeds, 
-            transition_closed_loop_system, 
-            events_unobservale_attacker
-        )
-
-        # queue 存储: (当前物理预估集元组, 当前闭环状态集)
-        queue = deque([(initial_x_tuple, initial_closed_set)])
-        visited_states = {(initial_x_tuple, initial_closed_set)}
+        queue = deque([initial_x_view])
+        visited = {initial_x_view}
 
         while queue:
-            curr_x_view, curr_closed_set = queue.popleft()
-            
-            # 遍历攻击者可观测事件
+            curr_x_view = queue.popleft()
             for sigma in event_attacker_observable:
-                # --- A. 确定受控系统在 sigma 下能到达的所有“种子” ---
-                next_closed_seeds = set()
-                for closed_state in curr_closed_set:
-                    if (closed_state, sigma) in transition_closed_loop_system:
-                        next_closed_seeds.add(transition_closed_loop_system[(closed_state, sigma)])
+                next_x_seeds = set()
+                for x in curr_x_view:
+                    if (x, sigma) in transition_origin_system:
+                        next_x_seeds.add(transition_origin_system[(x, sigma)])
                 
-                # --- B. 如果受控系统能走 sigma ---
-                if next_closed_seeds:
-                    # 1. 计算受控系统到达后的新闭环集合 (用于下一轮迭代的“发动机”)
-                    next_closed_set = HelperFunctionColledtion.cal_unobservable_reach(
-                        next_closed_seeds, 
-                        transition_closed_loop_system, 
-                        events_unobservale_attacker
-                    )
-
-                    # 2. 攻击者更新自己的预估集 (基于物理模型 transition_origin_system)
-                    # 攻击者看到 sigma，于是对当前预估集 curr_x_view 中的每个状态尝试 sigma 转移
-                    next_x_seeds = set()
-                    for x in curr_x_view:
-                        if (x, sigma) in transition_origin_system:
-                            next_x_seeds.add(transition_origin_system[(x, sigma)])
-                    
-                    # 计算物理模型下的不可观测闭包
-                    next_x_estimation = HelperFunctionColledtion.cal_unobservable_reach(
+                if next_x_seeds:
+                    next_x_view = GenerateACAGFunctionTools.cal_unobservable_reach(
                         next_x_seeds, 
                         transition_origin_system, 
-                        events_unobservale_attacker
+                        uo_events_attacker
                     )
-                    next_x_view = tuple(sorted(next_x_estimation))
-
-                    # 3. 记录结果
+                    # 记录时直接使用 frozenset
                     estimation_result_attacker[(curr_x_view, sigma)] = next_x_view
                     
-                    # 4. 判重并入队
-                    state_pair = (next_x_view, next_closed_set)
-                    if state_pair not in visited_states:
-                        visited_states.add(state_pair)
-                        queue.append(state_pair)
+                    if next_x_view not in visited:
+                        visited.add(next_x_view)
+                        queue.append(next_x_view)
         
         return estimation_result_attacker
+    
+    #更新单次攻击者预估
+    @staticmethod
+    def update_unobserver_reach_attacker(estimation_result_attacker,
+                                         current_estimation_attacker,
+                                         event):
+        if event == 'empty':
+            return current_estimation_attacker
+        lookup_key = (current_estimation_attacker, event)
+        next_estimate = estimation_result_attacker.get(lookup_key)
+        return next_estimate
+
     # 验证结果
     def verify_unobservable_reach_results(result):
         for i, ((curr_set, event), next_set) in enumerate(result.items(), 1):
@@ -170,9 +159,9 @@ class HelperFunctionColledtion:
     @staticmethod
     def tamper_events(event_vulnerable, event_alterable, event):
         if event in event_vulnerable:
-            return event_alterable
+            return tuple(event_alterable)
         else:
-            return event
+            return (event,)
     #监督器验证单次事件
     @staticmethod
     def verify_supervisor_single_event(transuition_closed_loop_system,

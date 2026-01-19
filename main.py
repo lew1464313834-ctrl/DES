@@ -1,5 +1,6 @@
-from system_info import SystemAssumptions, ClosedLoopSystem
-from generate_ACAG_helper import HelperFunctionColledtion
+from system_DFA_basic import SystemAssumptions, ClosedLoopSystem
+from generate_ACAG_helper import GenerateACAGFunctionTools
+from generate_ACAG_generator import ACAGSystemCreater
 
 #===== 定义系统假设 =====
 assumption = SystemAssumptions(
@@ -115,17 +116,17 @@ assumption = SystemAssumptions(
 if __name__ == "__main__":
     #1.闭环系统
     #1.0 生成攻击者和监督器的不可观测事件集
-    event_ubobservable_supervisor=ClosedLoopSystem.generate_unobservable_events(
+    event_unobservable_supervisor=ClosedLoopSystem.generate_unobservable_events(
         assumption.event_system,
         assumption.event_supervisor_observable
     )
-    print("监督器不可观测事件:", event_ubobservable_supervisor)
+    print("监督器不可观测事件:", event_unobservable_supervisor)
     print("="*60)
-    event_ubobservable_attacker=ClosedLoopSystem.generate_unobservable_events(
+    event_unobservable_attacker=ClosedLoopSystem.generate_unobservable_events(
         assumption.event_system,
         assumption.event_attacker_observable
     )
-    print("攻击者不可观测事件:", event_ubobservable_attacker)
+    print("攻击者不可观测事件:", event_unobservable_attacker)
     print("="*60)
     #1.1 生成闭环系统状态集合
     states_closed_loop_system=ClosedLoopSystem.generate_states_closed_loop_system(assumption.state_oringin_system,
@@ -176,30 +177,45 @@ if __name__ == "__main__":
     #2. ACAG系统
     
     #2.1 生成监督器不可观测可达集
-    unobservable_reachable_supervisor = HelperFunctionColledtion.generate_unobserver_reach_supervisor(
+    unobservable_reachable_supervisor = GenerateACAGFunctionTools.generate_unobserver_reach_supervisor(
         states_closed_loop_system,
         transition_closed_loop_system,
         assumption.event_supervisor_observable,
-        event_ubobservable_supervisor
+        event_unobservable_supervisor
         )
     #验证结果
     print("监督器不可观测可达集:")
-    HelperFunctionColledtion.verify_unobservable_reach_results(unobservable_reachable_supervisor)
+    GenerateACAGFunctionTools.verify_unobservable_reach_results(unobservable_reachable_supervisor)
     print("="*60)
     #2.2 生成攻击者不可观测可达集
-    unobservable_reachable_attacker = HelperFunctionColledtion.generate_unobserver_reach_attacker(
+    unobservable_reachable_attacker = GenerateACAGFunctionTools.generate_unobserver_reach_attacker(
         assumption.state_initial_origin_ststem,
-        transition_closed_loop_system,
         assumption.transition_origin_system,
         assumption.event_attacker_observable,
-        event_ubobservable_attacker
-        )
+        event_unobservable_attacker
+    )
     #验证结果
     print("攻击者不可观测可达集:")
-    HelperFunctionColledtion.verify_unobservable_reach_results(unobservable_reachable_attacker)
+    GenerateACAGFunctionTools.verify_unobservable_reach_results(unobservable_reachable_attacker)
     print("="*60)
     #2.3 生成ACAG系统转移关系集合
+    transition_ACAG_system = ACAGSystemCreater.generate_ACAG_transition(
+                                 event_unobservable_attacker,
+                                 assumption.event_vulnerable,
+                                 assumption.event_alterable,
+                                 event_unobservable_supervisor,
+                                 transition_closed_loop_system,
+                                 assumption.transition_origin_system,
+                                 assumption.transition_supervisor,
+                                 assumption.state_initial_origin_ststem,
+                                 state_initial_closed_loop_system,
+                                 assumption.state_initial_supervisor,
+                                 unobservable_reachable_supervisor,
+                                 unobservable_reachable_attacker
 
+    )
+    print("ACAG系统转移关系集合:", transition_ACAG_system)
+    print("="*60)
     #3. 生成ACAG完整图
     #4. 生成AO-ACAG系统完整信息
     #5. 绘制AO-ACAG完整图
