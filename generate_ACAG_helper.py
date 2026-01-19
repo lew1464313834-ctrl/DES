@@ -73,6 +73,7 @@ class GenerateACAGFunctionTools:
     @staticmethod
     def update_unobserver_reach_supervisor(estimation_result_set_supervisor,
                                            current_estimation_supervisor,
+                                           event_supervisor_unobservable,
                                            event):
         """
         带攻击检测的监督器预估更新。
@@ -83,7 +84,7 @@ class GenerateACAGFunctionTools:
         # 1. 状态保持：如果已经是报警态，则不再恢复，如果是空事件，则返回原估计
         if current_estimation_supervisor == frozenset({'AX'}):
             return frozenset({'AX'})
-        if event == 'empty':
+        if event == 'empty' or event in event_supervisor_unobservable:
             return current_estimation_supervisor
 
         # 2. 查表逻辑：获取预计算好的不可观测闭包
@@ -140,8 +141,9 @@ class GenerateACAGFunctionTools:
     @staticmethod
     def update_unobserver_reach_attacker(estimation_result_attacker,
                                          current_estimation_attacker,
+                                         event_attacker_observable,
                                          event):
-        if event == 'empty':
+        if event == 'empty' or event in event_attacker_observable:
             return current_estimation_attacker
         lookup_key = (current_estimation_attacker, event)
         next_estimate = estimation_result_attacker.get(lookup_key)
