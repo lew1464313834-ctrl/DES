@@ -114,14 +114,14 @@ if __name__ == "__main__":
         assumption.event_system,
         assumption.event_supervisor_observable
     )
-    print("监督器不可观测事件:", event_unobservable_supervisor)
-    print("="*60)
+    app_logger.info(f'监督器不可观测事件: {event_unobservable_supervisor}')
+    app_logger.info("="*60)
     event_unobservable_attacker=ClosedLoopSystem.generate_unobservable_events(
         assumption.event_system,
         assumption.event_attacker_observable
     )
-    print("攻击者不可观测事件:", event_unobservable_attacker)
-    print("="*60)
+    app_logger.info(f'攻击者不可观测事件: {event_unobservable_attacker}')
+    app_logger.info("="*60)
     #1.1 生成闭环系统状态集合
     states_closed_loop_system=ClosedLoopSystem.generate_states_closed_loop_system(assumption.state_oringin_system,
                                                             assumption.state_initial_origin_ststem,
@@ -130,8 +130,8 @@ if __name__ == "__main__":
                                                             assumption.transition_origin_system,
                                                             assumption.transition_supervisor
                                                             )
-    print("闭环系统状态集合:", states_closed_loop_system)
-    print("="*60)
+    app_logger.info(f'闭环系统状态集合: {states_closed_loop_system}')
+    app_logger.info("="*60)
     #1.2 生成闭环转换关系
     transition_closed_loop_system=ClosedLoopSystem.generate_transition_closed_loop_system(assumption.state_oringin_system,
                                                             assumption.state_initial_origin_ststem,
@@ -140,17 +140,17 @@ if __name__ == "__main__":
                                                             assumption.transition_origin_system,
                                                             assumption.transition_supervisor
                                                             )
-    print("闭环转换关系:", transition_closed_loop_system)
-    print("="*60)
-    # 1.3 绘制闭环系统图
-    # 闭环系统初始状态
+    app_logger.info(f'闭环转换关系:{transition_closed_loop_system}')
+    app_logger.info("="*60)
+    # 1.3 闭环系统初始状态
     state_initial_closed_loop_system = ClosedLoopSystem.generate_states_initial_closed_loop_system(
         assumption.state_initial_supervisor,
         assumption.state_initial_origin_ststem,
         states_closed_loop_system
     )
-    print("初始状态:", state_initial_closed_loop_system)
-    print("="*60)
+    app_logger.info(f'初始状态:{state_initial_closed_loop_system}')
+    app_logger.info("="*60)
+    # 1.4 生成闭环系统图
     closed_loop_graph = ClosedLoopSystem.generate_closed_loop_system_graph(
         transition_closed_loop_system,
         state_initial_closed_loop_system,
@@ -160,14 +160,13 @@ if __name__ == "__main__":
         assumption.event_supervisor_observable,
         assumption.event_supervisor_controllable,
     )
-    closed_loop_graph.render("closed_loop_system_graph", format="png", cleanup=True)
-    # 1.4 生成闭环语言
+    # 1.5 生成闭环语言
     language_closed_loop_system = ClosedLoopSystem.generate_language_closed_loop_system(
         transition_closed_loop_system,
         state_initial_closed_loop_system
     )
-    print("闭环系统语言:", language_closed_loop_system)
-    print("="*60)
+    app_logger.info(f'闭环系统语言:{language_closed_loop_system}')
+    app_logger.info("="*60)
     #2. ACAG系统
     
     #2.1 生成监督器不可观测可达集
@@ -178,9 +177,9 @@ if __name__ == "__main__":
         event_unobservable_supervisor
         )
     #验证结果
-    print("监督器不可观测可达集:")
-    GenerateACAGFunctionTools.verify_unobservable_reach_results(unobservable_reachable_supervisor)
-    print("="*60)
+    print("生成监督器不可观测可达集")
+    app_logger.info(f'监督器不可观测可达集:{unobservable_reachable_supervisor}')
+    app_logger.info("="*60)
     #2.2 生成攻击者不可观测可达集
     unobservable_reachable_attacker = GenerateACAGFunctionTools.generate_unobserver_reach_attacker(
         assumption.state_initial_origin_ststem,
@@ -188,32 +187,29 @@ if __name__ == "__main__":
         assumption.event_attacker_observable,
         event_unobservable_attacker
     )
-    #验证结果
-    print("攻击者不可观测可达集:")
-    GenerateACAGFunctionTools.verify_unobservable_reach_results(unobservable_reachable_attacker)
-    print("="*60)
+    print("生成攻击者不可观测可达集")
+    app_logger.info(f'攻击者不可观测可达集:{unobservable_reachable_attacker}')
+    app_logger.info("="*60)
     #2.3 生成ACAG系统转移关系集合
     transition_ACAG_system,initial_env_state = ACAGSystemCreater.generate_ACAG_transition(
-                                 event_unobservable_attacker,
-                                 assumption.event_vulnerable,
-                                 assumption.event_alterable,
-                                 event_unobservable_supervisor,
-                                 transition_closed_loop_system,
-                                 assumption.transition_origin_system,
-                                 assumption.transition_supervisor,
-                                 assumption.state_initial_origin_ststem,
-                                 state_initial_closed_loop_system,
-                                 assumption.state_initial_supervisor,
-                                 unobservable_reachable_supervisor,
-                                 unobservable_reachable_attacker,
-                                 assumption.state_system_secret
-
+        event_unobservable_attacker,
+        assumption.event_vulnerable,
+        assumption.event_alterable,
+        event_unobservable_supervisor,
+        transition_closed_loop_system,
+        assumption.transition_origin_system,      # 物理系统转移字典
+        assumption.transition_supervisor,         # 监督器实现字典
+        assumption.state_initial_origin_ststem,
+        state_initial_closed_loop_system,
+        assumption.state_initial_supervisor,
+        unobservable_reachable_supervisor,
+        unobservable_reachable_attacker,
+        assumption.state_system_secret,                # 秘密状态集
     )
     #验证结果
     app_logger.info("ACAG系统转移关系集合:")
     for state,next_state in transition_ACAG_system.items():
         app_logger.info(f'{state} -> {next_state}')
-        print(f'{state} -> {next_state}')
     app_logger.info("="*60)
     print("记录ACAG系统转移关系集合")
     #3. 生成ACAG完整图
@@ -223,7 +219,6 @@ if __name__ == "__main__":
         assumption.state_system_secret,
         filename='ACAG'
     )
-    print("记录ACAG系统完整图")
     #4. 生成AO-ACAG系统完整信息
     #5. 绘制AO-ACAG完整图
     #6. 生成pruned AO-ACAG完整信息

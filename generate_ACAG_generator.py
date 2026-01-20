@@ -10,54 +10,61 @@ class ACAGSystemCreater:
                                                     event,
                                                     event_vulnerable,
                                                     event_attacker_alterable):
+        '''
+        获取环境状态-攻击状态转换关系
+        在原环境状态下增加一个维度，表示可能的篡改事件集合
+        '''
         # 修正：环境状态是元组，索引 0 是预估集
         if current_environment_ACAG_state[0] == frozenset({'AX'}):
             return None
             
         # 判断事件是否可被篡改，返回一个包含所有可能篡改结果的 tuple
-        events_possible = GenerateACAGFunctionTools.tamper_events(
+        tempered_events = GenerateACAGFunctionTools.tamper_events(
             event_vulnerable,
             event_attacker_alterable,
             event
         )
-        
-        # 核心修正：使用 (tuple(events_possible),) 确保只增加了一个维度
-        # 结果维度：(est_sup, est_atk, sup_s, sys_s, (e_1, e_2, ...))
-        next_attacker_ACAG_state = current_environment_ACAG_state + (tuple(events_possible),)
+        next_attacker_ACAG_state = current_environment_ACAG_state + (tuple(tempered_events),)
         
         return next_attacker_ACAG_state
+    
+    # 获取攻击状态-环境状态转换关系
     @staticmethod
     def cal_transition_ACAG_attacker_to_environment(current_attacker_ACAG_state,
                                                     estimation_result_supervisor,
                                                     estimation_result_attacker,
-                                                    transition_closed_loop_system,
                                                     transition_origin_system,
                                                     transition_supervisor,
-                                                    event,
+                                                    event, # 原始事件 sigma
                                                     event_attacker_unobservable,
                                                     event_supervisor_unobservable,
-                                                    tampered_event):
-        # 1. 解包
-        cur_est_sup, cur_est_atk, cur_sup_s, cur_sys_s, _ = current_attacker_ACAG_state
+                                                    tampered_event): # 篡改事件 sigma'
+        # 1. 解包：(xi_S, xi_A, z, x, options)
+        cur_est_sup, cur_est_atk, cur_sup_z, cur_sys_x, _ = current_attacker_ACAG_state
         
-        # 2. 更新预估集
-        #更新监督器的预估
+        # 2. 更新监督器预估 (基于 tampered_event)
         res_sup = GenerateACAGFunctionTools.update_unobserver_reach_supervisor(
-            estimation_result_supervisor, cur_est_sup, event_supervisor_unobservable,tampered_event
+            estimation_result_supervisor, cur_est_sup, event_supervisor_unobservable, tampered_event
         )
-        # 如果为 None，说明该 tampered_event 在监督者看来是不可能的，
         next_est_sup = res_sup if res_sup is not None else frozenset({'AX'})
-        #更新攻击者的预估
+        
+        # 3. 更新攻击者预估 (基于 原始物理事件 event)
         next_est_atk = GenerateACAGFunctionTools.update_unobserver_reach_attacker(
-            estimation_result_attacker, cur_est_atk, event_attacker_unobservable,event
+            estimation_result_attacker, cur_est_atk, event_attacker_unobservable, event
         )
         
-        # 3. 更新物理实态
-        next_state_system = transition_origin_system.get((cur_sys_s, event))
-        next_state_supervisor = transition_supervisor.get((cur_sup_s, event))
+        # 4. 更新物理实态 x (始终随物理事件 event 变化)
+        next_state_system = transition_origin_system.get((cur_sys_x, event))
         
-        # 4. 返回环境状态
-        # 此时 next_est_sup 和 next_est_atk 已经是集合或 frozenset，不会再报错
+        # 5. 更新监督器内部状态 z (随篡改事件 tampered_event 变化)
+        if tampered_event == 'empty':
+            next_state_supervisor = cur_sup_z # 擦除攻击，监督器状态不动
+        else:
+            next_state_supervisor = transition_supervisor.get((cur_sup_z, tampered_event))
+            # 如果监督器在 z 状态下不接受 tampered_event，应进入检测状态 z_det
+            if next_state_supervisor is None:
+                next_state_supervisor = 'z_det'
+        
         return (frozenset(next_est_sup), frozenset(next_est_atk), next_state_supervisor, next_state_system)
 
     #生成ACAG转移关系
@@ -65,92 +72,108 @@ class ACAGSystemCreater:
     # 攻击状态Ya(attacker_ACAG_state)
     
     @staticmethod
-
     def generate_ACAG_transition(
-                                 event_attacker_unobservable,
-                                 event_vulnerable,
-                                 event_attacker_alterable,
-                                 event_supervisor_unobservable,
-                                 transition_closed_loop_system,
-                                 transition_origin_system,
-                                 transition_supervisor,
-                                 state_initial_origin,
-                                 state_initial_closed_loop_system,
-                                 state_initial_supervisor,
-                                 estimation_result_supervisor,
-                                 estimation_result_attacker,
-                                 secret_states
-                                 ):
-
+        event_attacker_unobservable,
+        event_vulnerable,
+        event_attacker_alterable,
+        event_supervisor_unobservable,
+        transition_closed_loop_system,
+        transition_origin_system,      # 物理系统转移字典
+        transition_supervisor,         # 监督器实现字典
+        state_initial_origin,
+        state_initial_closed_loop_system,
+        state_initial_supervisor,
+        estimation_result_supervisor,
+        estimation_result_attacker,
+        secret_states                  # 秘密状态集
+    ):
         environment_ACAG_states = set()
         attacker_ACAG_states = set()
         all_ACAG_transition = {}
-        # 1. 初始化 Ye_0
+
+        # 1. 初始化 Ye_0 = (xi_S_0, xi_A_0, z_0, x_0)
         initial_est_sup = GenerateACAGFunctionTools.cal_unobservable_reach(
             state_initial_closed_loop_system,
             transition_closed_loop_system,
             event_supervisor_unobservable
         )
-
         initial_est_atk = GenerateACAGFunctionTools.cal_unobservable_reach(
             state_initial_origin,
             transition_origin_system,
             event_attacker_unobservable
         )
-        init_sup_s = list(state_initial_supervisor)[0] if isinstance(state_initial_supervisor, (set, frozenset)) else state_initial_supervisor
-        init_ori_s = list(state_initial_origin)[0] if isinstance(state_initial_origin, (set, frozenset)) else state_initial_origin
-        initial_env_state = (initial_est_sup, initial_est_atk, init_sup_s, init_ori_s)     
+        
+        # 获取初始实态 (物理 x0 和 监督器 z0)
+        init_z = list(state_initial_supervisor)[0] if isinstance(state_initial_supervisor, (set, frozenset)) else state_initial_supervisor
+        init_x = list(state_initial_origin)[0] if isinstance(state_initial_origin, (set, frozenset)) else state_initial_origin
+        
+        # 定义顺序：(监督器预估, 攻击者预估, 监督器状态, 物理状态)
+        initial_env_state = (initial_est_sup, initial_est_atk, init_z, init_x)
+        
         environment_ACAG_states.add(initial_env_state)
-        queue = deque([initial_env_state])     
+        queue = deque([initial_env_state])
+
         while queue:
-            curr_env_state = queue.popleft()           
-            # --- 核心逻辑修改：终止条件检查 ---          
-            # 条件 1：如果监督者已报警 (AX)，停止从该状态分支
+            curr_env_state = queue.popleft()
+            
+            # --- 终止分支检查 ---
+            # 情况 A: 监督器已报警
             if curr_env_state[0] == frozenset({'AX'}):
                 continue
-            # 条件 2：如果攻击者预估集是秘密状态集的非空子集，停止分支
-            # curr_env_state[1] 是攻击者预估集 (est_atk)
+            
+            # 情况 B: 攻击成功 (攻击者确信物理系统在秘密状态)
             if len(curr_env_state[1]) > 0 and curr_env_state[1].issubset(secret_states):
-                # 记录这是一个“终止/攻击成功”状态，但不继续探索其后继转移
-                continue          
-            curr_est_sup, curr_est_atk, curr_sup_s, curr_sys_s = curr_env_state
-            # --- 步骤 2: Ye -> Ya ---
-            for (state_in_dict, event), next_closed_state in transition_closed_loop_system.items():
-                if state_in_dict == (curr_sup_s, curr_sys_s):                 
+                # 标记该节点为成功终点，不再向下搜索
+                continue
+
+            # 严格按照初始化顺序解包
+            curr_xi_S, curr_xi_A, curr_z, curr_x = curr_env_state
+
+            # --- 步骤 2: Ye -> Ya (关键：基于物理系统 origin_system 遍历) ---
+            # 只要物理系统能发生事件 sigma，攻击者就能截获
+            for (state_in_origin, sigma), next_x in transition_origin_system.items():
+                if state_in_origin == curr_x:
+                    
+                    # 生成攻击状态 Ya = (xi_S, xi_A, z, x, options)
                     next_atk_state = ACAGSystemCreater.cal_transition_ACAG_environment_to_attacker(
                         curr_env_state,
-                        event,
+                        sigma,
                         event_vulnerable,
                         event_attacker_alterable
-                    )                   
+                    )
+                    
                     if next_atk_state:
-                        all_ACAG_transition[(curr_env_state, event)] = next_atk_state                      
+                        # 记录 Ye --sigma--> Ya
+                        all_ACAG_transition[(curr_env_state, sigma)] = next_atk_state
+                        
                         if next_atk_state not in attacker_ACAG_states:
-                            attacker_ACAG_states.add(next_atk_state)                           
-                            # --- 步骤 3: Ya -> Ye' --
-                            events_possible = next_atk_state[-1]                           
-                            for tampered_event in events_possible:
+                            attacker_ACAG_states.add(next_atk_state)
+                            
+                            # --- 步骤 3: Ya -> Ye' (针对每一个篡改决策 sigma') ---
+                            options = next_atk_state[-1] # chi(sigma)
+                            
+                            for tampered_sigma in options:
                                 next_env_state = ACAGSystemCreater.cal_transition_ACAG_attacker_to_environment(
                                     next_atk_state,
                                     estimation_result_supervisor,
                                     estimation_result_attacker,
-                                    transition_closed_loop_system,
                                     transition_origin_system,
                                     transition_supervisor,
-                                    event,
+                                    sigma,                      # 原始物理事件
                                     event_attacker_unobservable,
                                     event_supervisor_unobservable,
-                                    tampered_event
+                                    tampered_sigma              # 篡改后的事件
                                 )
 
-                                # 安全检查：确保 next_env_state 不为空且不重复
                                 if next_env_state is not None:
-                                    all_ACAG_transition[(next_atk_state, tampered_event)] = next_env_state
+                                    # 记录 Ya --tampered_sigma--> Ye'
+                                    all_ACAG_transition[(next_atk_state, tampered_sigma)] = next_env_state
+                                    
                                     if next_env_state not in environment_ACAG_states:
                                         environment_ACAG_states.add(next_env_state)
                                         queue.append(next_env_state)
 
-        return all_ACAG_transition,initial_env_state
+        return all_ACAG_transition, initial_env_state
 
     @staticmethod
     def draw_ACAG_graph(all_ACAG_transition, initial_env_state, secret_states, filename='ACAG_DFA'):
