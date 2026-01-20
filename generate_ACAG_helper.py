@@ -88,7 +88,6 @@ class GenerateACAGFunctionTools:
             return current_estimation_supervisor
 
         # 2. 查表逻辑：获取预计算好的不可观测闭包
-        # 使用 .get() 防止因攻击者构造了预计算中不存在的异常路径而导致程序崩溃
         lookup_key = (current_estimation_supervisor, event)
         next_estimate = estimation_result_set_supervisor.get(lookup_key)
         
@@ -141,21 +140,13 @@ class GenerateACAGFunctionTools:
     @staticmethod
     def update_unobserver_reach_attacker(estimation_result_attacker,
                                          current_estimation_attacker,
-                                         event_attacker_observable,
+                                         event_attacker_unobservable,
                                          event):
-        if event == 'empty' or event in event_attacker_observable:
+        if  event in event_attacker_unobservable:
             return current_estimation_attacker
         lookup_key = (current_estimation_attacker, event)
         next_estimate = estimation_result_attacker.get(lookup_key)
         return next_estimate
-
-    # 验证结果
-    def verify_unobservable_reach_results(result):
-        for i, ((curr_set, event), next_set) in enumerate(result.items(), 1):
-            # 将 frozenset 转为 sorted list 方便阅读
-            curr_list = sorted(list(curr_set))
-            next_list = sorted(list(next_set))
-            print(f"{i}: {{ {tuple(curr_list) if len(curr_list)>1 else curr_list[0]}, {event} }} : frozenset({next_list})")
     
     # 单次篡改函数
     @staticmethod
