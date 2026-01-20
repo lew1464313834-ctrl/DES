@@ -1,6 +1,7 @@
 from system_DFA_basic import SystemAssumptions, ClosedLoopSystem
 from generate_ACAG_helper import GenerateACAGFunctionTools
 from generate_ACAG_generator import ACAGSystemCreater
+from utils.utils.logger import Logger, log_info, log_error, log_warning, log_debug, log_critical, get_logger
 
 #===== 定义系统假设 =====
 assumption = SystemAssumptions(
@@ -22,58 +23,49 @@ assumption = SystemAssumptions(
             (0, "o1"): 1,
             (0, "o2"): 3,
             (0, "o3"): 7,
-            (0, "empty"): 0,
 
             # ---------------------------------
             # state 1
             # ---------------------------------
             (1, "uo2"): 2,
-            (1, "empty"): 1,
 
             # ---------------------------------
             # state 2
             # ---------------------------------
             (2, "o1"): 5,
-            (2, "empty"): 2,
 
             # ---------------------------------
             # state 3
             # ---------------------------------
             (3, "o4"): 6,
-            (3, "empty"): 3,
 
             # ---------------------------------
             # state 4
             # ---------------------------------
             (4, "o2"): 1,
             (4, "o1"): 6,
-            (4, "empty"): 4,
 
             # ---------------------------------
             # state 5
             # ---------------------------------
             (5, "o4"): 0,
-            (5, "empty"): 5,
 
             # ---------------------------------
             # state 6
             # ---------------------------------
             (6, "uo3"): 7,
-            (6, "empty"): 6,
 
             # ---------------------------------
             # state 7
             # ---------------------------------
             (7, "o3"): 8,
             (7,"uo1"):4,
-            (7, "empty"): 7,
 
             # ---------------------------------
             # state 8
             # ---------------------------------
             (8, "o2"):5,
             (8, "o3"): 4,
-            (8, "empty"): 8
         },
         transition_supervisor = {
             # =========================
@@ -114,6 +106,8 @@ assumption = SystemAssumptions(
 
 #=====主程序=====
 if __name__ == "__main__":
+    app_logger = get_logger("cso_atk", "logs")
+    
     #1.闭环系统
     #1.0 生成攻击者和监督器的不可观测事件集
     event_unobservable_supervisor=ClosedLoopSystem.generate_unobservable_events(
@@ -199,7 +193,7 @@ if __name__ == "__main__":
     GenerateACAGFunctionTools.verify_unobservable_reach_results(unobservable_reachable_attacker)
     print("="*60)
     #2.3 生成ACAG系统转移关系集合
-    transition_ACAG_system = ACAGSystemCreater.generate_ACAG_transition(
+    transition_ACAG_system,initial_env_state = ACAGSystemCreater.generate_ACAG_transition(
                                  event_unobservable_attacker,
                                  assumption.event_vulnerable,
                                  assumption.event_alterable,
@@ -211,12 +205,25 @@ if __name__ == "__main__":
                                  state_initial_closed_loop_system,
                                  assumption.state_initial_supervisor,
                                  unobservable_reachable_supervisor,
-                                 unobservable_reachable_attacker
+                                 unobservable_reachable_attacker,
+                                 assumption.state_system_secret
 
     )
-    print("ACAG系统转移关系集合:", transition_ACAG_system)
-    print("="*60)
+    #验证结果
+    app_logger.info("ACAG系统转移关系集合:")
+    for state,next_state in transition_ACAG_system.items():
+        app_logger.info(f'{state} -> {next_state}')
+        print(f'{state} -> {next_state}')
+    app_logger.info("="*60)
+    print("记录ACAG系统转移关系集合")
     #3. 生成ACAG完整图
+    graph_ACAG_system = ACAGSystemCreater.draw_ACAG_graph(
+        transition_ACAG_system,
+        initial_env_state,
+        assumption.state_system_secret,
+        filename='ACAG'
+    )
+    print("记录ACAG系统完整图")
     #4. 生成AO-ACAG系统完整信息
     #5. 绘制AO-ACAG完整图
     #6. 生成pruned AO-ACAG完整信息

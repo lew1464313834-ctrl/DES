@@ -164,14 +164,3 @@ class GenerateACAGFunctionTools:
             return tuple(event_alterable)
         else:
             return (event,)
-    #监督器验证单次事件
-    @staticmethod
-    def verify_supervisor_single_event(transuition_closed_loop_system,
-                                       transition_supervisor, 
-                                       state_current_estimation, 
-                                       event):
-        next_estimation=set()   
-        for state in state_current_estimation:
-            if (state, event) in transuition_closed_loop_system:
-                return next_estimation
-        return {'AX'}
