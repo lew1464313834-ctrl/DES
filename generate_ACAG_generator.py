@@ -32,24 +32,30 @@ class ACAGSystemCreater:
                                                     transition_origin_system,
                                                     transition_supervisor,
                                                     event,
+                                                    event_attacker_unobservable,
+                                                    event_supervisor_unobservable,
                                                     tampered_event):
-        # 1. 解包 Ya (维度固定为 5)
-        # 最后一个 _ 接收的是那个包含所有可能事件的 tuple，但在本函数中不需要它
+        # 1. 解包
         cur_est_sup, cur_est_atk, cur_sup_s, cur_sys_s, _ = current_attacker_ACAG_state
         
-        # 2. 更新估计集
-        next_est_sup = GenerateACAGFunctionTools.update_unobserver_reach_supervisor(
-            estimation_result_supervisor, cur_est_sup, tampered_event
+        # 2. 更新预估集
+        #更新监督器的预估
+        res_sup = GenerateACAGFunctionTools.update_unobserver_reach_supervisor(
+            estimation_result_supervisor, cur_est_sup, event_supervisor_unobservable,tampered_event
         )
+        # 如果为 None，说明该 tampered_event 在监督者看来是不可能的，
+        next_est_sup = res_sup if res_sup is not None else frozenset({'AX'})
+        #更新攻击者的预估
         next_est_atk = GenerateACAGFunctionTools.update_unobserver_reach_attacker(
-            estimation_result_attacker, cur_est_atk, event
+            estimation_result_attacker, cur_est_atk, event_attacker_unobservable,event
         )
         
-        # 3. 更新实态 (使用元组作为字典的 Key)
-        next_state_system = transition_origin_system.get((cur_sys_s, event), cur_sys_s)
-        next_state_supervisor = transition_supervisor.get((cur_sup_s, event), cur_sup_s)
+        # 3. 更新物理实态
+        next_state_system = transition_origin_system.get((cur_sys_s, event))
+        next_state_supervisor = transition_supervisor.get((cur_sup_s, event))
         
-        # 4. 返回环境状态 (维度回到 4)
+        # 4. 返回环境状态
+        # 此时 next_est_sup 和 next_est_atk 已经是集合或 frozenset，不会再报错
         return (frozenset(next_est_sup), frozenset(next_est_atk), next_state_supervisor, next_state_system)
 
     #生成ACAG转移关系
@@ -138,6 +144,8 @@ class ACAGSystemCreater:
                                     transition_origin_system,
                                     transition_supervisor,
                                     event,          # 物理真实事件
+                                    event_attacker_unobservable,
+                                    event_supervisor_unobservable,
                                     tampered_event  # 攻击者发出的事件
                                 )
                                 
