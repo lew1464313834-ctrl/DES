@@ -68,7 +68,30 @@ class GenerateACAGFunctionTools:
                         queue.append(next_estimate)
         
         return estimation_result_set_supervisor
-    
+    @staticmethod
+    def label_unobserver_reach_supervisor(estimation_result_supervisor):
+        '''
+        标签化攻击者预估，将一个集合的预估结果用一个符号表示，方便后续绘图
+        返回格式: { 'A0': frozenset({...}), 'A1': frozenset({...}), ... }
+        '''
+        # 1. 提取所有出现的唯一预估集合
+        # 预估结果字典的 key 是 (current_est, event), value 是 next_est
+        all_unique_sets = set()
+        for (curr_set, event), next_set in estimation_result_supervisor.items():
+            all_unique_sets.add(curr_set)
+            all_unique_sets.add(next_set)
+            
+        # 2. 对集合进行排序（可选，但排序能保证每次运行生成的 A0, A1 编号顺序一致）
+        # 按照集合内元素的字符串表示进行排序
+        sorted_sets = sorted(list(all_unique_sets), key=lambda x: str(sorted(list(x))))
+        
+        # 3. 生成标签映射字典
+        labeled_map = {}
+        for i, est_set in enumerate(sorted_sets):
+            label = f'S{i}'
+            labeled_map[label] = est_set
+            
+        return labeled_map
     #更新单次监督器预估
     @staticmethod
     def update_unobserver_reach_supervisor(estimation_result_set_supervisor,
@@ -135,6 +158,31 @@ class GenerateACAGFunctionTools:
                         queue.append(next_x_view)
         
         return estimation_result_attacker
+    
+    @staticmethod
+    def label_unobserver_reach_attacker(estimation_result_attacker):
+        '''
+        标签化攻击者预估，将一个集合的预估结果用一个符号表示，方便后续绘图
+        返回格式: { 'A0': frozenset({...}), 'A1': frozenset({...}), ... }
+        '''
+        # 1. 提取所有出现的唯一预估集合
+        # 预估结果字典的 key 是 (current_est, event), value 是 next_est
+        all_unique_sets = set()
+        for (curr_set, event), next_set in estimation_result_attacker.items():
+            all_unique_sets.add(curr_set)
+            all_unique_sets.add(next_set)
+            
+        # 2. 对集合进行排序（可选，但排序能保证每次运行生成的 A0, A1 编号顺序一致）
+        # 按照集合内元素的字符串表示进行排序
+        sorted_sets = sorted(list(all_unique_sets), key=lambda x: str(sorted(list(x))))
+        
+        # 3. 生成标签映射字典
+        labeled_map = {}
+        for i, est_set in enumerate(sorted_sets):
+            label = f'A{i}'
+            labeled_map[label] = est_set
+            
+        return labeled_map
     
     #更新单次攻击者预估
     @staticmethod
