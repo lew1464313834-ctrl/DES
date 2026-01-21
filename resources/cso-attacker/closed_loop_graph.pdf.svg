@@ -131,7 +131,7 @@
 <!-- (0, 5) -->
 <g id="node11" class="node">
 <title>(0, 5)</title>
-<ellipse fill="none" stroke="black" cx="344.17" cy="-56.45" rx="21.6" ry="21.6"/>
+<ellipse fill="pink" stroke="black" cx="344.17" cy="-56.45" rx="21.6" ry="21.6"/>
 <text xml:space="preserve" text-anchor="middle" x="344.17" y="-51.4" font-family="Times New Roman,serif" font-size="14.00">0,5</text>
 </g>
 <!-- (0, 2)&#45;&gt;(0, 5) -->
@@ -171,7 +171,7 @@
 <!-- (1, 5) -->
 <g id="node13" class="node">
 <title>(1, 5)</title>
-<ellipse fill="none" stroke="black" cx="543.07" cy="-251.45" rx="21.6" ry="21.6"/>
+<ellipse fill="pink" stroke="black" cx="543.07" cy="-251.45" rx="21.6" ry="21.6"/>
 <text xml:space="preserve" text-anchor="middle" x="543.07" y="-246.4" font-family="Times New Roman,serif" font-size="14.00">1,5</text>
 </g>
 <!-- (1, 2)&#45;&gt;(1, 5) -->

@@ -1,8 +1,14 @@
-from system_DFA_basic import SystemAssumptions, ClosedLoopSystem
-from generate_ACAG_helper import GenerateACAGFunctionTools
-from generate_ACAG_generator import ACAGSystemCreater
-from utils.utils.logger import Logger, log_info, log_error, log_warning, log_debug, log_critical, get_logger
+import sys
+import os
+from src.generate_cso_attacker.utils.logger import Logger, log_info, log_error, log_warning, log_debug, log_critical, get_logger
+from src.generate_cso_attacker.system_DFA_basic import SystemAssumptions, ClosedLoopSystem
+from src.generate_cso_attacker.generate_ACAG_helper import GenerateACAGFunctionTools
+from src.generate_cso_attacker.generate_ACAG_generator import ACAGSystemCreater
+from src.generate_cso_attacker.generate_AO_ACAG_generator import AOACAGSystemCreater
+from src.generate_cso_attacker.generate_pruned_AO_ACAG_generator import PrunedAOACAGSystemCreater
 
+# 添加src目录到Python路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 #===== 定义系统假设 =====
 assumption = SystemAssumptions(
     state_oringin_system = {0, 1, 2, 3, 4, 5, 6, 7, 8},
@@ -152,14 +158,19 @@ if __name__ == "__main__":
     app_logger.info("="*60)
     # 1.4 生成闭环系统图
     closed_loop_graph = ClosedLoopSystem.generate_closed_loop_system_graph(
-        transition_closed_loop_system,
+        transition_closed_loop_system, 
         state_initial_closed_loop_system,
         assumption.event_system,
         assumption.event_attacker_observable,
         assumption.event_vulnerable,
         assumption.event_supervisor_observable,
         assumption.event_supervisor_controllable,
+        assumption.state_system_secret,
+        file_name="resources/cso-attacker/closed_loop_graph"
     )
+    # 额外输出PDF格式
+    closed_loop_graph.format = 'pdf'
+    closed_loop_graph.render("resources/cso-attacker/closed_loop_graph_pdf", cleanup=True)  # 输出PDF格式
     # 1.5 生成闭环语言
     language_closed_loop_system = ClosedLoopSystem.generate_language_closed_loop_system(
         transition_closed_loop_system,
@@ -220,16 +231,65 @@ if __name__ == "__main__":
     app_logger.info("="*60)
     print("记录ACAG系统转移关系集合")
     #3. 生成ACAG完整图
-    graph_ACAG_system = ACAGSystemCreater.draw_ACAG_graph(
+    graph_ACAG_system,lable_ACAG_map = ACAGSystemCreater.draw_ACAG_graph(
         transition_ACAG_system,
         initial_env_state,
         assumption.state_system_secret,
         labled_unobservable_reachable_supervisor,
         labled_unobservable_reachable_attacker,
-        filename='ACAG'
+        filename='resources/cso-attacker/ACAG'
     )
+    print("生成ACAG完整图")
+    graph_ACAG_system.format = 'pdf'
+    graph_ACAG_system.render("resources/cso-attacker/ACAG_pdf", cleanup=True)
+    #查看ACAG标签关系
+    app_logger.info("ACAG标签关系:")
+    for key,value in lable_ACAG_map.items():
+        app_logger.info(f'{key} -> {value}')
+    app_logger.info("="*60)
     #4. 生成AO-ACAG系统完整信息
+    #4.1 生成AO-ACAG系统转换关系集合
+    all_transition_AO_ACAG_system,intial_AO_env_state = AOACAGSystemCreater.generate_AO_ACAG_transition(
+        transition_ACAG_system,
+        initial_env_state,
+        lable_ACAG_map,
+        event_unobservable_attacker
+    )
+    print("生成AO-ACAG系统转换关系集合")
+    app_logger.info("AO-ACAG系统转换关系集合:")
+    for state,next_state in all_transition_AO_ACAG_system.items():
+        app_logger.info(f'{state} -> {next_state}')
+    app_logger.info("="*60)
     #5. 绘制AO-ACAG完整图
+    graph_AO_ACAG_system=AOACAGSystemCreater.draw_AO_ACAG_graph(
+        all_transition_AO_ACAG_system,
+        intial_AO_env_state,
+        lable_ACAG_map,
+        assumption.state_system_secret,
+        filename='resources/cso-attacker/AO-ACAG'
+    )
+    print("绘制AO-ACAG完整图")
+    graph_AO_ACAG_system.format='pdf'
+    graph_AO_ACAG_system.render("resources/cso-attacker/AO-ACAG_pdf", cleanup=True)
     #6. 生成pruned AO-ACAG完整信息
+    all_transition_pruned_AO_ACAG_system,intial_pruned_AO_env_state=PrunedAOACAGSystemCreater.generate_pruned_AO_ACAG_transition(
+        all_transition_AO_ACAG_system,
+        intial_AO_env_state
+    )
+    print("生成pruned AO-ACAG系统转换关系集合")
+    app_logger.info("pruned AO-ACAG系统转换关系集合:")
+    for state,next_state in all_transition_pruned_AO_ACAG_system.items():
+        app_logger.info(f'{state} -> {next_state}')
+    app_logger.info("="*60)
     #7. 绘制pruned AO-ACAG完整图
+    graph_pruned_AO_ACAG_system=PrunedAOACAGSystemCreater.draw_pruned_AO_ACAG_graph(
+        all_transition_pruned_AO_ACAG_system,
+        intial_pruned_AO_env_state,
+        lable_ACAG_map,
+        assumption.state_system_secret,
+        filename='resources/cso-attacker/pruned-AO-ACAG'
+    )
+    print("绘制pruned AO-ACAG完整图")
+    graph_pruned_AO_ACAG_system.format='pdf'
+    graph_pruned_AO_ACAG_system.render("resources/cso-attacker/pruned-AO-ACAG_pdf", cleanup=True)
     #8. 生成攻击者策略

@@ -1,4 +1,4 @@
-from generate_ACAG_helper import GenerateACAGFunctionTools
+from .generate_ACAG_helper import GenerateACAGFunctionTools
 from collections import deque
 import graphviz
 
@@ -75,9 +75,10 @@ class ACAGSystemCreater:
             next_state_supervisor = cur_sup_z # 擦除攻击，监督器未观测到事件，状态保持
         else:
             next_state_supervisor = transition_supervisor.get((cur_sup_z, tampered_event))
-            # 如果监督器在当前 z 下不接受该事件，进入检测状态 z_det
+            # 如果监督器在当前 z 下不接受该事件，进入检测状态 z_det,并且将预估集 xi_S' 中更改为AX
             if next_state_supervisor is None:
                 next_state_supervisor = 'z_det'
+                next_est_sup = frozenset({'AX'})
         
         # 4. 返回新的环境状态 Ye': (xi_S', xi_A_new, z', x_new)
         return (frozenset(next_est_sup), cur_est_atk, next_state_supervisor, cur_sys_x)
@@ -196,44 +197,57 @@ class ACAGSystemCreater:
     def draw_ACAG_graph(all_ACAG_transition, 
                         initial_env_state, 
                         secret_states,
-                        labled_unobservable_reachable_supervisor, # 格式: {'S0': frozenset(...)}
-                        labled_unobservable_reachable_attacker,   # 格式: {'A0': frozenset(...)}
-                        filename='ACAG_DFA'):
-        """
-        改进版 ACAG 绘图函数：
-        1. 预估集显示替换为标签符号 (S0, A0...)
-        2. 左上角显示标签与集合的对应关系图例
-        """
+                        labled_unobservable_reachable_supervisor, 
+                        labled_unobservable_reachable_attacker,
+                        filename):
         if isinstance(all_ACAG_transition, tuple):
             all_ACAG_transition = all_ACAG_transition[0]
 
         dot = graphviz.Digraph(comment='ACAG System', format='svg')
-        # 增加间距并设置图例位置（t: top, l: left）
-        dot.attr(rankdir='TB', nodesep='0.5', ranksep='0.8', fontname='Arial')
-        dot.attr(labelloc='t', labeljust='l', fontsize='12')
         
-        # --- 1. 构建反向映射与图例字符串 ---
-        # 反向映射用于在绘图时查找标签
+        # --- 1. 构建列表式图例字符串 ---
+        legend_html = '''<'''
+        legend_html += '''<FONT POINT-SIZE="16">'''
+        legend_html += '<B>State enstimation of supervisor:</B><BR ALIGN="LEFT"/><BR ALIGN="LEFT"/>'
+        for key, Value in labled_unobservable_reachable_supervisor.items():
+            if isinstance(Value, (frozenset, set)):
+                value_str = '{' + ','.join(map(str, Value)) + '}'
+            else:
+                value_str = str(Value)
+            legend_html += f'{key}:{value_str}<BR ALIGN="LEFT"/><BR ALIGN="LEFT"/>'
+        
+        legend_html += '<B>State enstimation of attacker:</B><BR ALIGN="LEFT"/><BR ALIGN="LEFT"/>'
+        for key, Value in labled_unobservable_reachable_attacker.items():
+            if isinstance(Value, (frozenset, set)):
+                value_str = '{' + ','.join(map(str, Value)) + '}'
+            else:
+                value_str = str(Value)
+            legend_html += f'{key}:{value_str}<BR ALIGN="LEFT"/><BR ALIGN="LEFT"/>'
+        legend_html += '</FONT>'
+        legend_html += '        >'
+        
+
+        # --- 2. 全局属性设置 ---
+        dot.attr(
+            label=legend_html,      # 设置图例内容
+            labelloc='t',           # t=Top (顶部)
+            labeljust='l',          # l=Left (左对齐)
+            rankdir='TB',
+            nodesep='0.25',         # 水平间距
+            ranksep='0.3',          # 垂直间距
+            fontname='serif',       # 论文标准衬线体
+            fontsize='11',
+            splines='spline',         # 连接线样式
+            overlap='false',
+            forcelabels='true'
+        )
+
         sup_val_to_label = {v: k for k, v in labled_unobservable_reachable_supervisor.items()}
         atk_val_to_label = {v: k for k, v in labled_unobservable_reachable_attacker.items()}
 
-        legend_lines = []
-        legend_lines.append("Supervisor Estimates:")
-        for label, s_set in sorted(labled_unobservable_reachable_supervisor.items()):
-            legend_lines.append(f"  {label}: {set(s_set)}")
-        
-        legend_lines.append("\nAttacker Estimates:")
-        for label, a_set in sorted(labled_unobservable_reachable_attacker.items()):
-            legend_lines.append(f"  {label}: {set(a_set)}")
-        
-        # 将图例内容设置为整个图的标题
-        dot.attr(label="\n".join(legend_lines))
-
-        # 稳定的 ID 生成函数
         def get_id(state):
-            return str(state).replace("frozenset", "").replace("set", "").replace(" ", "").translate(str.maketrans("({[]})", "      ")).replace(" ", "").replace(",", "_").replace("'", "")
+            return hex(hash(state) & 0xffffffff)
 
-        # 建立邻接表
         adj_map = {}
         possible_nodes = set()
         for (curr, event), next_s in all_ACAG_transition.items():
@@ -242,78 +256,93 @@ class ACAGSystemCreater:
             possible_nodes.add(curr)
             possible_nodes.add(next_s)
 
-        # 寻找起点
-        real_start_node = None
-        target_feat = str(initial_env_state).replace("set", "frozenset")
-        for node in possible_nodes:
-            if len(node) == 4 and str(node).replace("set", "frozenset") == target_feat:
-                real_start_node = node
-                break
-        if not real_start_node:
-            real_start_node = next((n for n in possible_nodes if len(n) == 4), None)
+        real_start_node = next((n for n in possible_nodes if len(n) == 4 and str(n).replace("set", "frozenset") == str(initial_env_state).replace("set", "frozenset")), 
+                               next((n for n in possible_nodes if len(n) == 4), None))
 
-        # 2. BFS 遍历绘制
         queue = deque([real_start_node]) if real_start_node else deque()
         visited = {real_start_node} if real_start_node else set()
-        
+        ye_map = {real_start_node: "ye0"} if real_start_node else {}
+        ye_counter = 1
+
         if real_start_node:
-            dot.node('start', label='', shape='none', width='0')
-            dot.edge('start', get_id(real_start_node))
+            dot.node('start_node', label='', shape='none', width='0', height='0')
+            dot.edge('start_node', get_id(real_start_node), arrowsize='0.6')
 
         while queue:
             curr_state = queue.popleft()
             curr_id = get_id(curr_state)
             
-            # --- 绘制节点 ---
-            if len(curr_state) == 4:  # Ye: 环境状态 (xi_S, xi_A, z, x)
+            # --- Ye 节点 ---
+            if len(curr_state) == 4:
                 xi_S, xi_A, z, x = curr_state
+                s_tag = sup_val_to_label.get(xi_S, "AX" if xi_S == frozenset({'AX'}) else "?")
+                a_tag = atk_val_to_label.get(xi_A, "?")
                 
-                # 查找标签，如果找不到（如 AX 态）则显示原始简写
-                s_tag = sup_val_to_label.get(xi_S, "AX" if xi_S == frozenset({'AX'}) else str(set(xi_S)))
-                a_tag = atk_val_to_label.get(xi_A, str(set(xi_A)))
-                
-                # 逻辑判定
-                is_spe = (xi_S == 'SPE' or xi_S == frozenset({'SPE'}) or z == 'z_det')
-                is_alarm = (xi_S == frozenset({'AX'}))
+                is_ax = (xi_S == 'AX' or xi_S == frozenset({'AX'}) or z == 'z_det')
                 is_success = (len(xi_A) > 0 and xi_A.issubset(secret_states))
                 
-                fill_c, color_c, pen_w = 'white', 'black', '1'
-                if is_spe:
-                    fill_c, color_c, pen_w = '#FFF3E0', '#E65100', '2' 
-                elif is_alarm:
-                    fill_c, color_c = '#FFEBEE', '#C62828' 
-                elif is_success:
-                    fill_c, color_c = '#E8F5E9', '#2E7D32'
+                # 学术莫兰迪配色
+                fill_c, color_c = '#F8F9FA', '#333333'
+                if is_ax:        
+                    fill_c, color_c = '#FFF1F2', '#9F1239' # 柔和红底 + 深红边
+                elif is_success: 
+                    fill_c, color_c = '#F0FDF4', '#166534' # 柔和绿底 + 深绿边
 
-                # 替换后的 label 使用标签符号
-                label = f" {s_tag},{a_tag},x:{x}, z:{z}"
-                dot.node(curr_id, label=label, shape='rectangle', style='filled', fillcolor=fill_c, color=color_c, penwidth=pen_w, fontsize='10')
+                # HTML label 内部排版
+                node_html = f'<<B>{s_tag}, {a_tag}, {x}, {z}</B>>'                    
+                dot.node(curr_id, 
+                        label=node_html, 
+                        xlabel=ye_map.get(curr_state, ""), 
+                        fontname='serif',
+                        shape='rectangle',      # 或者保持 'box'
+                        style='filled, rounded', 
+                        fillcolor=fill_c, 
+                        color=color_c, 
+                        margin='0.05,0.02', 
+                        width='0',              
+                        height='0', 
+                        penwidth='1.0',
+                        fontsize='10')
+            else:
+                # Ya 节点 (小圆圈)
+                dot.node(curr_id, 
+                         label='', 
+                         shape='circle', 
+                         width='0.08', 
+                         height='0.08', 
+                         fixedsize='true', 
+                         fillcolor='white', 
+                         style='filled', 
+                         color='black')
 
-            else:  # Ya: 攻击状态 (5元组)
-                dot.node(curr_id, label='', shape='circle', width='0.15', height='0.15', color='black', style='filled', fillcolor='white')
-
-            # --- 绘制边 ---
+            # --- 边绘制 ---
             if curr_state in adj_map:
                 for event, next_s in adj_map[curr_state]:
-                    next_id = get_id(next_s)
-                    is_from_ya = (len(curr_state) == 5)
-                    edge_style = 'dashed' if is_from_ya else 'solid'
-                    edge_color = 'blue' if is_from_ya else 'black'
-                    
-                    label_str = str(event)
-                    if event == 'empty': label_str = 'ε'
-                    
-                    dot.edge(curr_id, next_id, label=label_str, style=edge_style, color=edge_color, fontsize='9')
-
                     if next_s not in visited:
                         visited.add(next_s)
+                        if len(next_s) == 4:
+                            ye_map[next_s] = f"ye{ye_counter}"
+                            ye_counter += 1
                         queue.append(next_s)
+                    
+                    is_from_ya = (len(curr_state) == 5)
+                    e_color = '#2563EB' if is_from_ya else '#000000'
+                    e_style = 'dashed' if is_from_ya else 'solid'
+                    e_text = str(event) if event != 'empty' else '&epsilon;'
+                    
+                    dot.edge(curr_id, get_id(next_s), 
+                             label=f" {e_text} ", 
+                             fontname='serif',
+                             fontcolor='black',
+                             fontsize='9',
+                             style=e_style, 
+                             color=e_color, 
+                             arrowsize='0.6')
 
-        # 3. 输出
         try:
-            output_path = dot.render(filename, cleanup=True)
-            print(f"ACAG 标签化图表已生成：{output_path}")
+            dot.render(filename, cleanup=True)
+            print(f"Graph generated: {filename}.svg")
         except Exception as e:
-            print(f"渲染失败: {e}")
+            print(f"Rendering error: {e}")
 
-        return dot
+        return dot,ye_map
