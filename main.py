@@ -109,7 +109,7 @@ if __name__ == "__main__":
     app_logger = get_logger("cso_atk", "logs")
     
     #1.闭环系统
-    #1.0 生成攻击者和监督器的不可观测事件集
+    #生成攻击者和监督器的不可观测事件集
     event_unobservable_supervisor=ClosedLoopSystem.generate_unobservable_events(
         assumption.event_system,
         assumption.event_supervisor_observable
@@ -180,6 +180,10 @@ if __name__ == "__main__":
     print("生成监督器不可观测可达集")
     app_logger.info(f'监督器不可观测可达集:{unobservable_reachable_supervisor}')
     app_logger.info("="*60)
+    #验证标签结果集
+    labled_unobservable_reachable_supervisor=GenerateACAGFunctionTools.label_unobserver_reach_supervisor(unobservable_reachable_supervisor)
+    print("验证标签结果集")
+    app_logger.info(f'标签结果集:{labled_unobservable_reachable_supervisor}')
     #2.2 生成攻击者不可观测可达集
     unobservable_reachable_attacker = GenerateACAGFunctionTools.generate_unobserver_reach_attacker(
         assumption.state_initial_origin_ststem,
@@ -190,6 +194,9 @@ if __name__ == "__main__":
     print("生成攻击者不可观测可达集")
     app_logger.info(f'攻击者不可观测可达集:{unobservable_reachable_attacker}')
     app_logger.info("="*60)
+    #验证标签结果集
+    labled_unobservable_reachable_attacker=GenerateACAGFunctionTools.label_unobserver_reach_attacker(unobservable_reachable_attacker)
+    app_logger.info(f'标签结果集:{labled_unobservable_reachable_attacker}')
     #2.3 生成ACAG系统转移关系集合
     transition_ACAG_system,initial_env_state = ACAGSystemCreater.generate_ACAG_transition(
         event_unobservable_attacker,
@@ -217,6 +224,8 @@ if __name__ == "__main__":
         transition_ACAG_system,
         initial_env_state,
         assumption.state_system_secret,
+        labled_unobservable_reachable_supervisor,
+        labled_unobservable_reachable_attacker,
         filename='ACAG'
     )
     #4. 生成AO-ACAG系统完整信息
