@@ -1,193 +1,80 @@
-from .utils.logger import Logger, log_info, log_error, log_warning, log_debug, log_critical, get_logger
-from .system_DFA_basic import ClosedLoopSystem
-from .generate_ACAG_helper import GenerateACAGFunctionTools
-from .generate_ACAG_generator import ACAGSystemCreater
-from .generate_AO_ACAG_generator import AOACAGSystemCreater
-from .generate_pruned_AO_ACAG_generator import PrunedAOACAGSystemCreater
-from .system_assumption import assumption_one
+import sys
 
-assumption = assumption_one
-class CSO_Attacker_Generator:
+class CSO_Attacker_Strategy:
+    sys.setrecursionlimit(10000)
+
     @staticmethod
-    def generate_cso_attacker():
-        app_logger = get_logger("cso_atk", "logs")
-        
-        #1.闭环系统
-        #生成攻击者和监督器的不可观测事件集
-        event_unobservable_supervisor=ClosedLoopSystem.generate_unobservable_events(
-            assumption.event_system,
-            assumption.event_supervisor_observable
-        )
-        app_logger.info(f'监督器不可观测事件: {event_unobservable_supervisor}')
-        app_logger.info("="*60)
-        event_unobservable_attacker=ClosedLoopSystem.generate_unobservable_events(
-            assumption.event_system,
-            assumption.event_attacker_observable
-        )
-        app_logger.info(f'攻击者不可观测事件: {event_unobservable_attacker}')
-        app_logger.info("="*60)
-        #1.1 生成闭环系统状态集合
-        states_closed_loop_system=ClosedLoopSystem.generate_states_closed_loop_system(assumption.state_oringin_system,
-                                                                assumption.state_initial_origin_ststem,
-                                                                assumption.state_initial_supervisor,
-                                                                assumption.event_system,
-                                                                assumption.transition_origin_system,
-                                                                assumption.transition_supervisor
-                                                                )
-        app_logger.info(f'闭环系统状态集合: {states_closed_loop_system}')
-        app_logger.info("="*60)
-        #1.2 生成闭环转换关系
-        transition_closed_loop_system=ClosedLoopSystem.generate_transition_closed_loop_system(assumption.state_oringin_system,
-                                                                assumption.state_initial_origin_ststem,
-                                                                assumption.state_initial_supervisor,
-                                                                assumption.event_system,
-                                                                assumption.transition_origin_system,
-                                                                assumption.transition_supervisor
-                                                                )
-        app_logger.info(f'闭环转换关系:{transition_closed_loop_system}')
-        app_logger.info("="*60)
-        # 1.3 闭环系统初始状态
-        state_initial_closed_loop_system = ClosedLoopSystem.generate_states_initial_closed_loop_system(
-            assumption.state_initial_supervisor,
-            assumption.state_initial_origin_ststem,
-            states_closed_loop_system
-        )
-        app_logger.info(f'初始状态:{state_initial_closed_loop_system}')
-        app_logger.info("="*60)
-        # 1.4 生成闭环系统图
-        closed_loop_graph = ClosedLoopSystem.generate_closed_loop_system_graph(
-            transition_closed_loop_system, 
-            state_initial_closed_loop_system,
-            assumption.event_system,
-            assumption.event_attacker_observable,
-            assumption.event_vulnerable,
-            assumption.event_supervisor_observable,
-            assumption.event_supervisor_controllable,
-            assumption.state_system_secret,
-            file_name="resources/cso-attacker/closed_loop_graph"
-        )
-        # 额外输出PDF格式
-        closed_loop_graph.format = 'pdf'
-        closed_loop_graph.render("resources/cso-attacker/closed_loop_graph_pdf", cleanup=True)  # 输出PDF格式
-        # 1.5 生成闭环语言
-        language_closed_loop_system = ClosedLoopSystem.generate_language_closed_loop_system(
-            transition_closed_loop_system,
-            state_initial_closed_loop_system
-        )
-        app_logger.info(f'闭环系统语言:{language_closed_loop_system}')
-        app_logger.info("="*60)
-        #2. ACAG系统
-        
-        #2.1 生成监督器不可观测可达集
-        unobservable_reachable_supervisor = GenerateACAGFunctionTools.generate_unobserver_reach_supervisor(
-            states_closed_loop_system,
-            transition_closed_loop_system,
-            assumption.event_supervisor_observable,
-            event_unobservable_supervisor
-            )
-        #验证结果
-        print("生成监督器不可观测可达集")
-        app_logger.info(f'监督器不可观测可达集:{unobservable_reachable_supervisor}')
-        app_logger.info("="*60)
-        #验证标签结果集
-        labled_unobservable_reachable_supervisor=GenerateACAGFunctionTools.label_unobserver_reach_supervisor(unobservable_reachable_supervisor)
-        print("验证标签结果集")
-        app_logger.info(f'标签结果集:{labled_unobservable_reachable_supervisor}')
-        #2.2 生成攻击者不可观测可达集
-        unobservable_reachable_attacker = GenerateACAGFunctionTools.generate_unobserver_reach_attacker(
-            assumption.state_initial_origin_ststem,
-            assumption.transition_origin_system,
-            assumption.event_attacker_observable,
-            event_unobservable_attacker
-        )
-        print("生成攻击者不可观测可达集")
-        app_logger.info(f'攻击者不可观测可达集:{unobservable_reachable_attacker}')
-        app_logger.info("="*60)
-        #验证标签结果集
-        labled_unobservable_reachable_attacker=GenerateACAGFunctionTools.label_unobserver_reach_attacker(unobservable_reachable_attacker)
-        app_logger.info(f'标签结果集:{labled_unobservable_reachable_attacker}')
-        #2.3 生成ACAG系统转移关系集合
-        transition_ACAG_system,initial_env_state = ACAGSystemCreater.generate_ACAG_transition(
-            event_unobservable_attacker,
-            assumption.event_vulnerable,
-            assumption.event_alterable,
-            event_unobservable_supervisor,
-            transition_closed_loop_system,
-            assumption.transition_origin_system,      # 物理系统转移字典
-            assumption.transition_supervisor,         # 监督器实现字典
-            assumption.state_initial_origin_ststem,
-            state_initial_closed_loop_system,
-            assumption.state_initial_supervisor,
-            unobservable_reachable_supervisor,
-            unobservable_reachable_attacker,
-            assumption.state_system_secret,                # 秘密状态集
-        )
-        #验证结果
-        app_logger.info("ACAG系统转移关系集合:")
-        for state,next_state in transition_ACAG_system.items():
-            app_logger.info(f'{state} -> {next_state}')
-        app_logger.info("="*60)
-        print("记录ACAG系统转移关系集合")
-        #3. 生成ACAG完整图
-        graph_ACAG_system,lable_ACAG_map = ACAGSystemCreater.draw_ACAG_graph(
-            transition_ACAG_system,
-            initial_env_state,
-            assumption.state_system_secret,
-            labled_unobservable_reachable_supervisor,
-            labled_unobservable_reachable_attacker,
-            filename='resources/cso-attacker/ACAG'
-        )
-        print("生成ACAG完整图")
-        graph_ACAG_system.format = 'pdf'
-        graph_ACAG_system.render("resources/cso-attacker/ACAG_pdf", cleanup=True)
-        #查看ACAG标签关系
-        app_logger.info("ACAG标签关系:")
-        for key,value in lable_ACAG_map.items():
-            app_logger.info(f'{key} -> {value}')
-        app_logger.info("="*60)
-        #4. 生成AO-ACAG系统完整信息
-        #4.1 生成AO-ACAG系统转换关系集合
-        all_transition_AO_ACAG_system,intial_AO_env_state = AOACAGSystemCreater.generate_AO_ACAG_transition(
-            transition_ACAG_system,
-            initial_env_state,
-            lable_ACAG_map,
-            event_unobservable_attacker
-        )
-        print("生成AO-ACAG系统转换关系集合")
-        app_logger.info("AO-ACAG系统转换关系集合:")
-        for state,next_state in all_transition_AO_ACAG_system.items():
-            app_logger.info(f'{state} -> {next_state}')
-        app_logger.info("="*60)
-        #5. 绘制AO-ACAG完整图
-        graph_AO_ACAG_system=AOACAGSystemCreater.draw_AO_ACAG_graph(
-            all_transition_AO_ACAG_system,
-            intial_AO_env_state,
-            lable_ACAG_map,
-            assumption.state_system_secret,
-            filename='resources/cso-attacker/AO-ACAG'
-        )
-        print("绘制AO-ACAG完整图")
-        graph_AO_ACAG_system.format='pdf'
-        graph_AO_ACAG_system.render("resources/cso-attacker/AO-ACAG_pdf", cleanup=True)
-        #6. 生成pruned AO-ACAG完整信息
-        all_transition_pruned_AO_ACAG_system,intial_pruned_AO_env_state=PrunedAOACAGSystemCreater.generate_pruned_AO_ACAG_transition(
-            all_transition_AO_ACAG_system,
-            intial_AO_env_state
-        )
-        print("生成pruned AO-ACAG系统转换关系集合")
-        app_logger.info("pruned AO-ACAG系统转换关系集合:")
-        for state,next_state in all_transition_pruned_AO_ACAG_system.items():
-            app_logger.info(f'{state} -> {next_state}')
-        app_logger.info("="*60)
-        #7. 绘制pruned AO-ACAG完整图
-        graph_pruned_AO_ACAG_system=PrunedAOACAGSystemCreater.draw_pruned_AO_ACAG_graph(
-            all_transition_pruned_AO_ACAG_system,
-            intial_pruned_AO_env_state,
-            lable_ACAG_map,
-            assumption.state_system_secret,
-            filename='resources/cso-attacker/pruned-AO-ACAG'
-        )
-        print("绘制pruned AO-ACAG完整图")
-        graph_pruned_AO_ACAG_system.format='pdf'
-        graph_pruned_AO_ACAG_system.render("resources/cso-attacker/pruned-AO-ACAG_pdf", cleanup=True)
-        #8. 生成攻击者策略
+    def generate_advanced_attacker_strategies(pruned_transitions, 
+                                              q0_tags, 
+                                              lable_ACAG_map, 
+                                              secret_states):
+        """
+        提取包含环路具体路径的攻击策略，并严格计算成功率。
+        过滤掉无法发现秘密的死胡同路径。
+        """
+        tag_to_state = {v: k for k, v in lable_ACAG_map.items()}
+
+        def is_secret_node(tags):
+            """判定节点是否包含秘密状态"""
+            for tag in tags:
+                orig = tag_to_state.get(tag)
+                # 状态结构 (xi_S, xi_A, z, x), xi_A 是 index 1
+                if orig and len(orig) >= 2 and len(orig[1]) > 0:
+                    if orig[1].issubset(secret_states):
+                        return True
+            return False
+
+        # 1. 预处理图结构
+        # adj[curr_qe] = { next_qe: [(o, t), ...] }
+        adj = {}
+        for (qa_info, t_sigma), next_qe in pruned_transitions.items():
+            curr_qe, o_sigma = qa_info
+            if curr_qe not in adj: adj[curr_qe] = {}
+            if next_qe not in adj[curr_qe]: adj[curr_qe][next_qe] = []
+            adj[curr_qe][next_qe].append((o_sigma, t_sigma))
+
+        strategy_dict = {}
+
+        def find_all_paths(curr_node, path_str, visited_nodes, secret_count):
+            """
+            递归遍历所有可能路径。
+            visited_nodes: 用于防止在环路中无限递归，每个节点在一条路径中最多出现两次以展示环路。
+            """
+            # 标记当前节点
+            new_visited = visited_nodes.copy()
+            new_visited[curr_node] = new_visited.get(curr_node, 0) + 1
+            
+            # 计算当前节点的秘密属性
+            current_is_secret = is_secret_node(curr_node)
+            new_secret_count = secret_count + (1 if current_is_secret else 0)
+            
+            # 如果没有出边，说明到达了终端节点
+            if curr_node not in adj or not adj[curr_node]:
+                # 核心逻辑：只有路径中至少包含一个秘密状态时，才认为该策略有效
+                if new_secret_count > 0:
+                    total_nodes = sum(new_visited.values())
+                    prob = (new_secret_count / total_nodes) * 100
+                    strategy_dict[path_str] = f"{prob:.2f}%"
+                return
+
+            # 遍历所有可能的下一跳
+            for next_node, actions in adj[curr_node].items():
+                # 环路处理：如果一个节点在当前路径已经出现了2次，则停止深入（视为已展示过环路行为）
+                if new_visited.get(next_node, 0) >= 2:
+                    # 到此为止，计算概率并记录
+                    if new_secret_count > 0:
+                        total_nodes = sum(new_visited.values())
+                        prob = (new_secret_count / total_nodes) * 100
+                        # 加上省略号表示环路继续
+                        strategy_dict[path_str + "..."] = f"{prob:.2f}%"
+                    continue
+
+                for (o, t) in actions:
+                    step = f"{o}({t})"
+                    find_all_paths(next_node, path_str + step, new_visited, new_secret_count)
+
+        # 2. 从初始节点开始搜索
+        find_all_paths(q0_tags, "", {}, 0)
+
+        # 3. 结果精简：如果 A 路径是 B 路径的前缀且概率相同，保留长的（可选）
+        return strategy_dict
