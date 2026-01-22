@@ -1,5 +1,6 @@
-from collections import deque
 import graphviz
+from collections import deque
+
 class AOACAGSystemCreater:
     @staticmethod
     def generate_AO_ACAG_transition(all_ACAG_transition, initial_env_state, lable_ACAG_map, event_attacker_unobservable):
@@ -204,4 +205,5 @@ class AOACAGSystemCreater:
 
         dot.render(filename, cleanup=True)
         return dot
+    
     
