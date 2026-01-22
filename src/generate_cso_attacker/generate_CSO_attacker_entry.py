@@ -203,3 +203,5 @@ class CSO_Attacker_Generator:
         for key,value in attacker_policy.items():
             app_logger.info(f'{key}:{value}')
         app_logger.info("="*60)
+    #9. 绘制攻击者
+        CSO_Attacker_Strategy.draw_attacker_graph(attacker_policy,filename="resources/cso-attacker/attacker_dfa")
