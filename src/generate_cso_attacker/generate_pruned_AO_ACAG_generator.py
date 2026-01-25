@@ -52,8 +52,9 @@ class PrunedAOACAGSystemCreater:
                                 filename):
         """
         绘制 Pruned AO-ACAG 图：
-        1. 自动过滤掉 AX 相关逻辑（剪枝后理论上不存在）。
-        2. 只要节点中包含能发现秘密的状态，背景即标为绿色。
+        1. 自动过滤掉 AX 相关逻辑。
+        2. 包含秘密状态的节点标绿。
+        3. 确保 Qe 到 Qa 的观测边唯一。
         """
         import graphviz
         dot = graphviz.Digraph(comment='Pruned AO-ACAG System', format='svg')
@@ -82,7 +83,6 @@ class PrunedAOACAGSystemCreater:
             """判定节点集合是否包含秘密发现状态"""
             for tag in tags:
                 orig_state = tag_to_state.get(tag)
-                # 状态元组结构: (xi_S, xi_A, z, x) -> xi_A 是第二个元素
                 if orig_state and len(orig_state) >= 2:
                     xi_A = orig_state[1]
                     if len(xi_A) > 0 and xi_A.issubset(secret_states):
@@ -90,6 +90,8 @@ class PrunedAOACAGSystemCreater:
             return False
 
         visited_nodes = set()
+        # --- 新增：用于记录已绘制的观测边，防止重复 ---
+        visited_edges = set()
 
         # --- 1. 初始状态入口 ---
         dot.node('start_node', label='', shape='none', width='0', height='0')
@@ -106,12 +108,11 @@ class PrunedAOACAGSystemCreater:
             # A. 绘制环境状态 Qe (矩形)
             for node_tags, node_id in [(curr_qe_tags, qe_id), (next_qe_tags, next_id)]:
                 if node_id not in visited_nodes:
-                    # 标绿判定
                     is_victory = check_is_secret(node_tags)
                     
-                    fill_c = '#DCFCE7' if is_victory else '#F8F9FA'  # 鲜亮的绿 vs 浅灰白
-                    color_c = '#166534' if is_victory else '#475569' # 深绿边 vs 灰蓝边
-                    pen_w = '2.0' if is_victory else '1.0'           # 绿框加粗
+                    fill_c = '#DCFCE7' if is_victory else '#F8F9FA'
+                    color_c = '#166534' if is_victory else '#475569'
+                    pen_w = '2.0' if is_victory else '1.0'
                     
                     label_text = f'<<B>{format_tags(node_tags)}</B>>'
                     dot.node(node_id, label=label_text, shape='rectangle', 
@@ -126,11 +127,15 @@ class PrunedAOACAGSystemCreater:
                 visited_nodes.add(qa_id)
 
             # C. 绘制边
-            # Qe --(观测)--> Qa
-            dot.edge(qe_id, qa_id, label=f" {o_sigma} ", 
-                    fontname='serif', fontsize='10', color='#1E293B')
+            # --- 修改：增加过滤逻辑，确保 Qe --(o_sigma)--> Qa 唯一 ---
+            edge_key = (qe_id, qa_id)
+            if edge_key not in visited_edges:
+                dot.edge(qe_id, qa_id, label=f" {o_sigma} ", 
+                        fontname='serif', fontsize='10', color='#1E293B')
+                visited_edges.add(edge_key)
 
             # Qa --(篡改决策)--> Next Qe
+            # 这里的边代表不同的攻击选择，保留原有逻辑
             dot.edge(qa_id, next_id, label=f" {t_sigma} ", 
                     fontname='serif:bold', fontsize='10', 
                     style='dashed', color='#2563EB', fontcolor='#2563EB', arrowsize='0.7')
