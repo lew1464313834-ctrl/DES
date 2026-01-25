@@ -49,12 +49,13 @@ class PrunedAOACAGSystemCreater:
                                 q0_tags,
                                 lable_ACAG_map,
                                 secret_states,
+                                qe_map, # 新增参数：传入 draw_AO_ACAG_graph 返回的编号映射
                                 filename):
         """
         绘制 Pruned AO-ACAG 图：
         1. 自动过滤掉 AX 相关逻辑。
         2. 包含秘密状态的节点标绿。
-        3. 确保 Qe 到 Qa 的观测边唯一。
+        3. 使用传入的 qe_map 标记节点编号 (xlabel)。
         """
         import graphviz
         dot = graphviz.Digraph(comment='Pruned AO-ACAG System', format='svg')
@@ -90,11 +91,12 @@ class PrunedAOACAGSystemCreater:
             return False
 
         visited_nodes = set()
-        # --- 新增：用于记录已绘制的观测边，防止重复 ---
         visited_edges = set()
 
         # --- 1. 初始状态入口 ---
         dot.node('start_node', label='', shape='none', width='0', height='0')
+        # 获取 q0 的编号
+        q0_label = qe_map.get(q0_tags, "qe?") 
         dot.edge('start_node', get_id(q0_tags), arrowsize='0.7', penwidth='1.2')
 
         # --- 2. 遍历剪枝后的转移关系 ---
@@ -114,10 +116,20 @@ class PrunedAOACAGSystemCreater:
                     color_c = '#166534' if is_victory else '#475569'
                     pen_w = '2.0' if is_victory else '1.0'
                     
+                    # 从 qe_map 获取对应的编号
+                    qe_label = qe_map.get(node_tags, "")
+                    
                     label_text = f'<<B>{format_tags(node_tags)}</B>>'
-                    dot.node(node_id, label=label_text, shape='rectangle', 
-                            style='filled, rounded', fillcolor=fill_c, color=color_c, 
-                            penwidth=pen_w, margin='0.1,0.05')
+                    dot.node(node_id, 
+                            label=label_text, 
+                            xlabel=qe_label, # 在节点外部标注编号
+                            shape='rectangle', 
+                            style='filled, rounded', 
+                            fillcolor=fill_c, 
+                            color=color_c, 
+                            penwidth=pen_w, 
+                            margin='0.1,0.05',
+                            fontsize='10')
                     visited_nodes.add(node_id)
 
             # B. 绘制攻击决策点 Qa (小黑圆点)
@@ -127,7 +139,6 @@ class PrunedAOACAGSystemCreater:
                 visited_nodes.add(qa_id)
 
             # C. 绘制边
-            # --- 修改：增加过滤逻辑，确保 Qe --(o_sigma)--> Qa 唯一 ---
             edge_key = (qe_id, qa_id)
             if edge_key not in visited_edges:
                 dot.edge(qe_id, qa_id, label=f" {o_sigma} ", 
@@ -135,7 +146,6 @@ class PrunedAOACAGSystemCreater:
                 visited_edges.add(edge_key)
 
             # Qa --(篡改决策)--> Next Qe
-            # 这里的边代表不同的攻击选择，保留原有逻辑
             dot.edge(qa_id, next_id, label=f" {t_sigma} ", 
                     fontname='serif:bold', fontsize='10', 
                     style='dashed', color='#2563EB', fontcolor='#2563EB', arrowsize='0.7')
@@ -143,7 +153,7 @@ class PrunedAOACAGSystemCreater:
         # --- 3. 渲染 ---
         try:
             dot.render(filename, cleanup=True)
-            print(f"Success: Pruned AO-ACAG graph saved to {filename}.svg")
+            print(f"Success: Pruned AO-ACAG graph saved to {filename}")
         except Exception as e:
             print(f"Error rendering graph: {e}")
             

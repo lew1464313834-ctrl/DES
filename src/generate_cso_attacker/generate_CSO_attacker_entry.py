@@ -4,8 +4,8 @@ from .generate_ACAG_helper import GenerateACAGFunctionTools
 from .generate_ACAG_generator import ACAGSystemCreater
 from .generate_AO_ACAG_generator import AOACAGSystemCreater
 from .generate_pruned_AO_ACAG_generator import PrunedAOACAGSystemCreater
+from .correspond_graph_simplyfier import GraphSimplyfier
 from .system_assumption import assumption_one
-from .generate_CSO_attacker_generator import CSO_Attacker_Strategy
 
 assumption = assumption_one
 class CSO_Attacker_Generator:
@@ -163,7 +163,7 @@ class CSO_Attacker_Generator:
             app_logger.info(f'{state} -> {next_state}')
         app_logger.info("="*60)
         #5. 绘制AO-ACAG完整图
-        graph_AO_ACAG_system=AOACAGSystemCreater.draw_AO_ACAG_graph(
+        graph_AO_ACAG_system,lable_AOACAG_map=AOACAGSystemCreater.draw_AO_ACAG_graph(
             all_transition_AO_ACAG_system,
             intial_AO_env_state,
             lable_ACAG_map,
@@ -189,22 +189,20 @@ class CSO_Attacker_Generator:
             intial_pruned_AO_env_state,
             lable_ACAG_map,
             assumption.state_system_secret,
+            lable_AOACAG_map,
             filename='resources/cso-attacker/pruned-AO-ACAG'
         )
         print("绘制pruned AO-ACAG完整图")
         graph_pruned_AO_ACAG_system.format='pdf'
         graph_pruned_AO_ACAG_system.render("resources/cso-attacker/pruned-AO-ACAG_pdf", cleanup=True)
-        #8. 生成攻击者策略
-        attacker_policy = CSO_Attacker_Strategy.generate_advanced_attacker_strategies(
-            all_transition_pruned_AO_ACAG_system,
-            intial_pruned_AO_env_state,
-            lable_ACAG_map,
-            assumption.state_system_secret
+        #8. 生成简略的可放在论文中的图
+        #8.1 生成简略的ACAG图
+        GraphSimplyfier.draw_paper_simplified_ACAG(
+            transition_ACAG_system,
+            initial_env_state,
+            assumption.state_system_secret,
+            labled_unobservable_reachable_supervisor,
+            labled_unobservable_reachable_attacker,
+            filename="resources/cso-attacker/simplified_ACAG"
         )
-        print("生成攻击者策略")
-        app_logger.info("攻击者策略:")
-        for key,value in attacker_policy.items():
-            app_logger.info(f'{key}:{value}')
-        app_logger.info("="*60)
-    #9. 绘制攻击者
-        CSO_Attacker_Strategy.draw_attacker_graph(attacker_policy,filename="resources/cso-attacker/attacker_dfa")
+        print("生成简略的ACAG图")

@@ -121,9 +121,12 @@ class AOACAGSystemCreater:
         tag_to_state = {v: k for k, v in lable_ACAG_map.items()}
 
         visited_nodes = set()
-        # --- 新增：用于记录已绘制的边，防止重复 ---
         visited_edges = set() 
         ax_counter = 0
+        
+        # --- 新增：用于管理节点编号 qe0, qe1... ---
+        qe_map = {q0_tags: "qe0"}
+        qe_counter = 1
 
         # --- 1. 初始箭头 ---
         dot.node('start_node', label='', shape='none', width='0', height='0')
@@ -139,20 +142,31 @@ class AOACAGSystemCreater:
             # A. 绘制环境聚类节点 (Qe)
             if qe_id not in visited_nodes:
                 has_secret = False
-                for tag in curr_qe_tags:
-                    orig_state = tag_to_state.get(tag)
-                    if orig_state and len(orig_state) >= 2:
-                        if len(orig_state[1]) > 0 and orig_state[1].issubset(secret_states):
-                            has_secret = True
-                            break
+                # 判定是否包含秘密状态
+                if curr_qe_tags != 'AX':
+                    for tag in curr_qe_tags:
+                        orig_state = tag_to_state.get(tag)
+                        if orig_state and len(orig_state) >= 2:
+                            if len(orig_state[1]) > 0 and orig_state[1].issubset(secret_states):
+                                has_secret = True
+                                break
                 
                 fill_c, color_c = '#F8F9FA', '#333333'
                 if has_secret and curr_qe_tags != 'AX':
                     fill_c, color_c = '#F0FDF4', '#166534'
 
                 node_html = f'<<B>{format_tags(curr_qe_tags)}</B>>'
-                dot.node(qe_id, label=node_html, shape='rectangle', style='filled, rounded', 
-                        fillcolor=fill_c, color=color_c, margin='0.05,0.02', width='0', height='0')
+                dot.node(qe_id, 
+                        label=node_html, 
+                        xlabel=qe_map.get(curr_qe_tags, ""), # 设置外部编号
+                        shape='rectangle', 
+                        style='filled, rounded', 
+                        fillcolor=fill_c, 
+                        color=color_c, 
+                        margin='0.05,0.02', 
+                        width='0', 
+                        height='0',
+                        fontsize='10')
                 visited_nodes.add(qe_id)
 
             # B. 绘制攻击决策点 (Qa)
@@ -162,13 +176,12 @@ class AOACAGSystemCreater:
                 visited_nodes.add(qa_id)
 
             # C. 绘制边与目标节点
-            # --- 修改：增加过滤逻辑，确保 Qe -> Qa 的实线唯一 ---
             edge_key = (qe_id, qa_id)
             if edge_key not in visited_edges:
                 dot.edge(qe_id, qa_id, label=f" {o_sigma} ", style='solid', color='black', arrowsize='0.6')
                 visited_edges.add(edge_key)
 
-            # Qa -> Next (虚线蓝色) - 这一步通常由于 t_sigma 不同，本身就是唯一的
+            # Qa -> Next (虚线蓝色)
             if next_qe_tags == 'AX':
                 unique_ax_id = f"ax_node_{ax_counter}"
                 ax_counter += 1
@@ -178,6 +191,11 @@ class AOACAGSystemCreater:
                 dot.edge(qa_id, unique_ax_id, label=f" {t_sigma} ", 
                         style='dashed', color='#2563EB', fontcolor='#2563EB', arrowsize='0.6')
             else:
+                # 为下一个环境节点分配编号
+                if next_qe_tags not in qe_map:
+                    qe_map[next_qe_tags] = f"qe{qe_counter}"
+                    qe_counter += 1
+                
                 next_id = get_id(next_qe_tags)
                 if next_id not in visited_nodes:
                     is_next_secret = False
@@ -189,13 +207,19 @@ class AOACAGSystemCreater:
                     
                     n_fill, n_col = ('#F0FDF4', '#166534') if is_next_secret else ('#F8F9FA', '#333333')
                     
-                    dot.node(next_id, label=f'<<B>{format_tags(next_qe_tags)}</B>>', 
-                            shape='rectangle', style='filled, rounded', 
-                            fillcolor=n_fill, color=n_col, margin='0.05,0.02')
+                    dot.node(next_id, 
+                            label=f'<<B>{format_tags(next_qe_tags)}</B>>', 
+                            xlabel=qe_map[next_qe_tags], # 设置外部编号
+                            shape='rectangle', 
+                            style='filled, rounded', 
+                            fillcolor=n_fill, 
+                            color=n_col, 
+                            margin='0.05,0.02',
+                            fontsize='10')
                     visited_nodes.add(next_id)
                 
                 dot.edge(qa_id, next_id, label=f" {t_sigma} ", 
                         style='dashed', color='#2563EB', fontcolor='#2563EB', arrowsize='0.6')
 
         dot.render(filename, cleanup=True)
-        return dot
+        return dot, qe_map
