@@ -99,11 +99,6 @@ class AOACAGSystemCreater:
                         lable_ACAG_map,
                         secret_states,
                         filename):
-        """
-        修改版 AO-ACAG 绘图：
-        1. 每一个导致 AX 的动作都指向一个独立的 AX 终点节点。
-        2. 包含秘密状态且不导致 AX 的节点标绿。
-        """
         dot = graphviz.Digraph(comment='AO-ACAG System', format='svg')
         
         dot.attr(
@@ -123,11 +118,12 @@ class AOACAGSystemCreater:
             if tags == 'AX': return 'AX'
             return "{" + ",".join(tags) + "}"
 
-        # 建立标签到原始状态的逆映射，用于判定 secret_states
         tag_to_state = {v: k for k, v in lable_ACAG_map.items()}
 
         visited_nodes = set()
-        ax_counter = 0 # 用于生成唯一的 AX 节点 ID
+        # --- 新增：用于记录已绘制的边，防止重复 ---
+        visited_edges = set() 
+        ax_counter = 0
 
         # --- 1. 初始箭头 ---
         dot.node('start_node', label='', shape='none', width='0', height='0')
@@ -142,18 +138,15 @@ class AOACAGSystemCreater:
 
             # A. 绘制环境聚类节点 (Qe)
             if qe_id not in visited_nodes:
-                # 判定是否包含秘密状态
                 has_secret = False
                 for tag in curr_qe_tags:
                     orig_state = tag_to_state.get(tag)
                     if orig_state and len(orig_state) >= 2:
-                        # 检查 xi_A (orig_state[1]) 是否是秘密集的子集
                         if len(orig_state[1]) > 0 and orig_state[1].issubset(secret_states):
                             has_secret = True
                             break
                 
                 fill_c, color_c = '#F8F9FA', '#333333'
-                # 如果包含秘密且不是 AX，标绿
                 if has_secret and curr_qe_tags != 'AX':
                     fill_c, color_c = '#F0FDF4', '#166534'
 
@@ -169,12 +162,14 @@ class AOACAGSystemCreater:
                 visited_nodes.add(qa_id)
 
             # C. 绘制边与目标节点
-            # Qe -> Qa (实线)
-            dot.edge(qe_id, qa_id, label=f" {o_sigma} ", style='solid', color='black', arrowsize='0.6')
+            # --- 修改：增加过滤逻辑，确保 Qe -> Qa 的实线唯一 ---
+            edge_key = (qe_id, qa_id)
+            if edge_key not in visited_edges:
+                dot.edge(qe_id, qa_id, label=f" {o_sigma} ", style='solid', color='black', arrowsize='0.6')
+                visited_edges.add(edge_key)
 
-            # Qa -> Next (虚线蓝色)
+            # Qa -> Next (虚线蓝色) - 这一步通常由于 t_sigma 不同，本身就是唯一的
             if next_qe_tags == 'AX':
-                # 每一个 AX 动作指向一个独立的节点
                 unique_ax_id = f"ax_node_{ax_counter}"
                 ax_counter += 1
                 dot.node(unique_ax_id, label='<<B>AX</B>>', shape='rectangle', 
@@ -185,7 +180,6 @@ class AOACAGSystemCreater:
             else:
                 next_id = get_id(next_qe_tags)
                 if next_id not in visited_nodes:
-                    # 重复上面的 Qe 绘制逻辑（判定绿色）
                     is_next_secret = False
                     for tag in next_qe_tags:
                         orig_state = tag_to_state.get(tag)
@@ -205,5 +199,3 @@ class AOACAGSystemCreater:
 
         dot.render(filename, cleanup=True)
         return dot
-    
-    
