@@ -99,13 +99,16 @@ class CSO_Attacker_Generator:
             assumption.state_initial_origin_ststem,
             assumption.transition_origin_system,
             assumption.event_attacker_observable,
+            assumption.state_supervisor,
+            assumption.state_initial_supervisor,
+            assumption.transition_supervisor,
             event_unobservable_attacker
         )
         print("生成攻击者不可观测可达集")
         app_logger.info(f'攻击者不可观测可达集:{unobservable_reachable_attacker}')
         app_logger.info("="*60)
         #验证标签结果集
-        labled_unobservable_reachable_attacker=GenerateACAGFunctionTools.label_unobserver_reach_attacker(unobservable_reachable_attacker)
+        labled_unobservable_reachable_attacker=GenerateACAGFunctionTools.label_unobserver_reach_attacker(unobservable_reachable_attacker,assumption.state_supervisor)
         app_logger.info(f'标签结果集:{labled_unobservable_reachable_attacker}')
         #2.3 生成ACAG系统转移关系集合
         transition_ACAG_system,initial_env_state = ACAGSystemCreater.generate_ACAG_transition(
