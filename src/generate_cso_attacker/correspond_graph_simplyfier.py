@@ -9,7 +9,7 @@ class GraphSimplyfier:
                                                sup_labels, 
                                                atk_labels,
                                                max_full_depth=2, 
-                                               filename="acag_paper_final_v2"):
+                                               filename='simplified_ACAG'):
 
         sup_val_to_label = {v: k for k, v in sup_labels.items()}
         atk_val_to_label = {v: k for k, v in atk_labels.items()}

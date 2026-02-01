@@ -19,12 +19,11 @@ class AOACAGSystemCreater:
             while stack:
                 curr = stack.pop()
                 # 遍历从当前 Ye 经过不可观事件到达的下一个 Ye
-                # 注意：在您的 ACAG 中，Ye -> Ya -> Ye'。
-                # 如果 Ye --(unobs_sigma)--> Ya --(tampered_sigma)--> Ye' 且两者都不可观，则属于闭包
+                # 路径逻辑：Ye --(unobs_sigma)--> Ya --(unobs_tamper)--> Ye'
                 for (state, sigma), nxt in all_ACAG_transition.items():
                     if state == curr and sigma in event_attacker_unobservable:
-                        # 如果 nxt 是 Ya，继续找它发出的不可观决策
-                        if len(nxt) == 5: # Ya 节点
+                        # 【修复点 1】：判断 Ya 节点长度由 5 改为 6
+                        if len(nxt) == 6: # Ya 节点现在是 6 维元组
                             for (ya_s, t_sigma), ye_next in all_ACAG_transition.items():
                                 if ya_s == nxt and t_sigma in event_attacker_unobservable:
                                     if ye_next not in closure:
@@ -33,7 +32,8 @@ class AOACAGSystemCreater:
             return frozenset(closure)
 
         def to_tag_tuple(state_set):
-            if state_set == 'AX': return 'AX'
+            if state_set == 'AX': 
+                return 'AX'
             return tuple(sorted([get_tag(s) for s in state_set]))
 
         # 1. 初始化初始节点的闭包
@@ -49,8 +49,10 @@ class AOACAGSystemCreater:
         ya_adj = {}
         for (curr, event), nxt in all_ACAG_transition.items():
             if len(curr) == 4: 
+                # 环境节点 Ye (长度 4)
                 ye_adj.setdefault(curr, []).append((event, nxt))
             else: 
+                # 攻击节点 Ya (长度 6) - 进入 else 分支
                 ya_adj.setdefault(curr, []).append((event, nxt))
 
         while queue:
@@ -124,7 +126,7 @@ class AOACAGSystemCreater:
         visited_edges = set() 
         ax_counter = 0
         
-        # --- 新增：用于管理节点编号 qe0, qe1... ---
+        # --- 管理节点编号 qe0, qe1... ---
         qe_map = {q0_tags: "qe0"}
         qe_counter = 1
 
@@ -172,7 +174,7 @@ class AOACAGSystemCreater:
             # B. 绘制攻击决策点 (Qa)
             if qa_id not in visited_nodes:
                 dot.node(qa_id, label='', shape='circle', width='0.08', height='0.08', 
-                        fixedsize='true', fillcolor='black', style='filled', color='none')
+                        fixedsize='true', fillcolor='white', style='filled', color='black')
                 visited_nodes.add(qa_id)
 
             # C. 绘制边与目标节点

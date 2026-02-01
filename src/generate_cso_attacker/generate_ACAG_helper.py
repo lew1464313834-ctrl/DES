@@ -25,7 +25,7 @@ class GenerateACAGFunctionTools:
 
     # 生成监督器视角的所有转移关系
     @staticmethod
-    def generate_unobserver_reach_supervisor(states_closed_loop_system, 
+    def generate_unobserver_reach_supervisor(
                                       transition_closed_loop_system,
                                         observable_events, 
                                       event_ubobservable_supervisor):
@@ -162,7 +162,6 @@ class GenerateACAGFunctionTools:
                                            transition_origin_system,
                                            event_attacker_observable,
                                            states_supervisor,
-                                           state_initial_supervisor, 
                                            transition_supervisor, 
                                            uo_events_attacker):
         """

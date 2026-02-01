@@ -11,11 +11,10 @@ class ACAGSystemCreater:
                                                     event_vulnerable,
                                                     event_attacker_alterable,
                                                     transition_supervisor,
-                                                    transition_origin_system,
-                                                    estimation_result_attacker,
-                                                    event_attacker_unobservable):
+                                                    transition_origin_system):
         '''
         Ye -> Ya 转换逻辑：
+        【修改点】：此处不再更新攻击者预估 xi_A，而是将原始事件 sigma 和旧的 xi_A 传递给 Ya 节点。
         '''
         # 解包环境状态 Ye: (xi_S, xi_A, z, x)
         cur_est_sup, cur_est_atk, cur_sup_z, cur_sys_x = current_environment_ACAG_state
@@ -27,13 +26,12 @@ class ACAGSystemCreater:
         next_state_system = transition_origin_system.get((cur_sys_x, event))
         if next_state_system is None:
             return None # 物理上不可能发生的事件
-        #监督器当前禁止的事件
+        
+        # 监督器当前禁止的事件
         if transition_supervisor.get((cur_sup_z, event)) is None:
             return None 
-        # 2. 更新攻击者预估 xi_A' (攻击者看到原始事件 sigma)
-        next_est_atk = GenerateACAGFunctionTools.update_unobserver_reach_attacker(
-            estimation_result_attacker, cur_est_atk, event_attacker_unobservable, cur_sup_z,event
-        )
+            
+        # 【移除】：原有的 step 2 (更新 xi_A) 已移除，移动到下一步骤
 
         # 3. 获取篡改选项
         tempered_events = GenerateACAGFunctionTools.tamper_events(
@@ -42,9 +40,12 @@ class ACAGSystemCreater:
             event
         )
 
-        # 返回攻击状态 Ya: (xi_S, xi_A', z, x', chi(sigma))
-        # 注意：这里的 xi_S 和 z 依然是旧的，等待下一步更新
-        next_attacker_ACAG_state = (cur_est_sup, frozenset(next_est_atk), cur_sup_z, next_state_system, tuple(tempered_events))
+        # 返回攻击状态 Ya
+        # 【升维】：
+        # 1. 此时传递的是旧的 cur_est_atk (尚未更新)
+        # 2. 新增了 event (原始物理事件)，因为下一步更新 xi_A 需要用到它
+        # 结构变更为: (xi_S, xi_A_old, z, x', options, original_event)
+        next_attacker_ACAG_state = (cur_est_sup, cur_est_atk, cur_sup_z, next_state_system, tuple(tempered_events), event)
         
         return next_attacker_ACAG_state
     
@@ -54,20 +55,30 @@ class ACAGSystemCreater:
                                                     estimation_result_supervisor,
                                                     transition_supervisor,
                                                     event_supervisor_unobservable,
-                                                    tampered_event): # 篡改事件 sigma'
+                                                    tampered_event, 
+                                                    estimation_result_attacker, 
+                                                    event_attacker_unobservable):
         '''
         Ya -> Ye' 转换逻辑
+        【修改点】：在此处同时更新 xi_S' 和 xi_A'
         '''
-        # 1. 解包 Ya: (xi_S, xi_A_new, z, x_new, options)
-        cur_est_sup, cur_est_atk, cur_sup_z, cur_sys_x, _ = current_attacker_ACAG_state
+        # 1. 解包 Ya: (xi_S, xi_A_old, z, x_new, options, original_event)
+        # 注意：这里多解包出一个 original_event，元组长度为 6
+        cur_est_sup, cur_est_atk, cur_sup_z, cur_sys_x, _, original_event = current_attacker_ACAG_state
         
-        # 2. 更新监督器预估 xi_S' (基于攻击者发出的 tampered_event)
+        # 【新增逻辑】 2. 更新攻击者预估 xi_A' (基于攻击者看到的原始事件 original_event)
+        # 这一步是从上一个函数移动过来的
+        next_est_atk = GenerateACAGFunctionTools.update_unobserver_reach_attacker(
+            estimation_result_attacker, cur_est_atk, event_attacker_unobservable, cur_sup_z, original_event
+        )
+
+        # 3. 更新监督器预估 xi_S' (基于攻击者发出的 tampered_event)
         res_sup = GenerateACAGFunctionTools.update_unobserver_reach_supervisor(
             estimation_result_supervisor, cur_est_sup, event_supervisor_unobservable, tampered_event
         )
         next_est_sup = res_sup if res_sup is not None else frozenset({'AX'})
         
-        # 3. 更新监督器内部状态 z' (基于攻击者发出的 tampered_event)
+        # 4. 更新监督器内部状态 z' (基于攻击者发出的 tampered_event)
         if tampered_event == 'empty':
             next_state_supervisor = cur_sup_z # 擦除攻击，监督器未观测到事件，状态保持
         else:
@@ -77,13 +88,11 @@ class ACAGSystemCreater:
                 next_state_supervisor = 'z_det'
                 next_est_sup = frozenset({'AX'})
         
-        # 4. 返回新的环境状态 Ye': (xi_S', xi_A_new, z', x_new)
-        return (frozenset(next_est_sup), cur_est_atk, next_state_supervisor, cur_sys_x)
+        # 5. 返回新的环境状态 Ye': (xi_S', xi_A', z', x_new)
+        # 注意：这里使用的是刚刚计算出的 next_est_atk
+        return (frozenset(next_est_sup), frozenset(next_est_atk), next_state_supervisor, cur_sys_x)
 
     #生成ACAG转移关系
-    # 包括环境状态Ye（environment_ACAG_state):(监督器预估集，攻击者预估集，受控系统当前状态)
-    # 攻击状态Ya(attacker_ACAG_state)
-    
     @staticmethod
     def generate_ACAG_transition(
         event_attacker_unobservable,
@@ -142,15 +151,14 @@ class ACAGSystemCreater:
             for (state_in_origin, sigma), next_x_in_dict in transition_origin_system.items():
                 if state_in_origin == curr_x:
                     
+                    # 【修改点】：调用 Ye -> Ya 时减少参数
                     next_atk_state = ACAGSystemCreater.cal_transition_ACAG_environment_to_attacker(
                         curr_env_state,
                         sigma,
                         event_vulnerable,
                         event_attacker_alterable,
                         transition_supervisor,
-                        transition_origin_system,
-                        estimation_result_attacker,
-                        event_attacker_unobservable
+                        transition_origin_system
                     )
                     
                     if next_atk_state:
@@ -160,14 +168,18 @@ class ACAGSystemCreater:
                             attacker_ACAG_states.add(next_atk_state)
                             
                             # --- Ya -> Ye' ---
-                            options = next_atk_state[-1] 
+                            # 注意：next_atk_state 现在长度为 6，options 位于倒数第二位 [-2]
+                            options = next_atk_state[-2] 
                             for tampered_sigma in options:
+                                # 【修改点】：调用 Ya -> Ye' 时增加参数
                                 next_env_state = ACAGSystemCreater.cal_transition_ACAG_attacker_to_environment(
                                     next_atk_state,
                                     estimation_result_supervisor,
                                     transition_supervisor,
                                     event_supervisor_unobservable,
-                                    tampered_sigma
+                                    tampered_sigma,
+                                    estimation_result_attacker,   # 新增
+                                    event_attacker_unobservable   # 新增
                                 )
 
                                 if next_env_state:
@@ -191,6 +203,7 @@ class ACAGSystemCreater:
 
         dot = graphviz.Digraph(comment='ACAG System', format='svg')
         
+        # ... (图例生成代码省略，保持不变) ...
         # --- 1. 构建列表式图例字符串 ---
         legend_html = '''<'''
         legend_html += '''<FONT POINT-SIZE="16">'''
@@ -211,19 +224,18 @@ class ACAGSystemCreater:
             legend_html += f'{key}:{value_str}<BR ALIGN="LEFT"/><BR ALIGN="LEFT"/>'
         legend_html += '</FONT>'
         legend_html += '        >'
-        
 
         # --- 2. 全局属性设置 ---
         dot.attr(
-            label=legend_html,      # 设置图例内容
-            labelloc='t',           # t=Top (顶部)
-            labeljust='l',          # l=Left (左对齐)
+            label=legend_html,      
+            labelloc='t',           
+            labeljust='l',          
             rankdir='TB',
-            nodesep='0.25',         # 水平间距
-            ranksep='0.3',          # 垂直间距
-            fontname='serif',       # 论文标准衬线体
+            nodesep='0.25',         
+            ranksep='0.3',          
+            fontname='serif',       
             fontsize='11',
-            splines='spline',         # 连接线样式
+            splines='spline',         
             overlap='false',
             forcelabels='true'
         )
@@ -258,7 +270,7 @@ class ACAGSystemCreater:
             curr_state = queue.popleft()
             curr_id = get_id(curr_state)
             
-            # --- Ye 节点 ---
+            # --- Ye 节点 (长度为 4) ---
             if len(curr_state) == 4:
                 xi_S, xi_A, z, x = curr_state
                 s_tag = sup_val_to_label.get(xi_S, "AX" if xi_S == frozenset({'AX'}) else "?")
@@ -267,20 +279,18 @@ class ACAGSystemCreater:
                 is_ax = (xi_S == 'AX' or xi_S == frozenset({'AX'}) or z == 'z_det')
                 is_success = (len(xi_A) > 0 and xi_A.issubset(secret_states))
                 
-                # 学术莫兰迪配色
                 fill_c, color_c = '#F8F9FA', '#333333'
                 if is_ax:        
-                    fill_c, color_c = '#FFF1F2', '#9F1239' # 柔和红底 + 深红边
+                    fill_c, color_c = '#FFF1F2', '#9F1239' 
                 elif is_success: 
-                    fill_c, color_c = '#F0FDF4', '#166534' # 柔和绿底 + 深绿边
+                    fill_c, color_c = '#F0FDF4', '#166534' 
 
-                # HTML label 内部排版
                 node_html = f'<<B>{s_tag}, {a_tag}, {x}, {z}</B>>'                    
                 dot.node(curr_id, 
                         label=node_html, 
                         xlabel=ye_map.get(curr_state, ""), 
                         fontname='serif',
-                        shape='rectangle',      # 或者保持 'box'
+                        shape='rectangle',      
                         style='filled, rounded', 
                         fillcolor=fill_c, 
                         color=color_c, 
@@ -290,7 +300,8 @@ class ACAGSystemCreater:
                         penwidth='1.0',
                         fontsize='10')
             else:
-                # Ya 节点 (小圆圈)
+                # --- Ya 节点 ---
+                # 因为 Ya 节点现在升维到了 6 (包含 original_event)，所以走 else 分支
                 dot.node(curr_id, 
                          label='', 
                          shape='circle', 
@@ -311,7 +322,10 @@ class ACAGSystemCreater:
                             ye_counter += 1
                         queue.append(next_s)
                     
-                    is_from_ya = (len(curr_state) == 5)
+                    # 【修改点】：判断源节点是否为 Ya
+                    # 现在的 Ya 节点长度是 6，不是 5 了
+                    is_from_ya = (len(curr_state) == 6)
+                    
                     e_color = '#2563EB' if is_from_ya else '#000000'
                     e_style = 'dashed' if is_from_ya else 'solid'
                     e_text = str(event) if event != 'empty' else '&epsilon;'
@@ -331,4 +345,4 @@ class ACAGSystemCreater:
         except Exception as e:
             print(f"Rendering error: {e}")
 
-        return dot,ye_map
+        return dot, ye_map

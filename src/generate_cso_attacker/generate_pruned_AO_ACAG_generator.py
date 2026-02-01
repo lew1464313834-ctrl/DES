@@ -8,7 +8,6 @@ class PrunedAOACAGSystemCreater:
         pruned_trans = ao_transitions.copy()
 
         # 2. 删除所有攻击暴露的 AO-states (即指向 AX 的转移)
-        # 在我们的结构中，t_sigma 转移到 AX 的边要被切断
         keys_to_delete = [k for k, v in pruned_trans.items() if v == 'AX']
         for k in keys_to_delete:
             del pruned_trans[k]
@@ -16,10 +15,6 @@ class PrunedAOACAGSystemCreater:
         # 3. 递归删除无输出的攻击 AO-状态 qa
         while True:
             changed = False
-            
-            # 获取当前图中所有的 Qa 节点 (即转移的 key[0])
-            # 我们的 key 格式是 ( (qe_tags, o_sigma), t_sigma )
-            # 所以 Qa 是 k[0]
             all_qas = {k[0] for k in pruned_trans.keys()}
             
             # 统计哪些 Qa 还有合法的出边 (指向 Qe')
@@ -32,8 +27,6 @@ class PrunedAOACAGSystemCreater:
                 break
 
             for q_a in dead_qas:
-                # 找到指向该 dead_qa 的所有边
-                # 逻辑：删除任何导致攻击者进入“无解局面”的路径
                 target_edges = [k for k, v in pruned_trans.items() if v == q_a]
                 if target_edges:
                     for k in target_edges:
@@ -52,10 +45,7 @@ class PrunedAOACAGSystemCreater:
                                 qe_map, # 新增参数：传入 draw_AO_ACAG_graph 返回的编号映射
                                 filename):
         """
-        绘制 Pruned AO-ACAG 图：
-        1. 自动过滤掉 AX 相关逻辑。
-        2. 包含秘密状态的节点标绿。
-        3. 使用传入的 qe_map 标记节点编号 (xlabel)。
+        绘制 Pruned AO-ACAG 图
         """
         import graphviz
         dot = graphviz.Digraph(comment='Pruned AO-ACAG System', format='svg')
@@ -132,10 +122,10 @@ class PrunedAOACAGSystemCreater:
                             fontsize='10')
                     visited_nodes.add(node_id)
 
-            # B. 绘制攻击决策点 Qa (小黑圆点)
+            # B. 绘制攻击决策点 Qa
             if qa_id not in visited_nodes:
                 dot.node(qa_id, label='', shape='circle', width='0.1', height='0.1', 
-                        fixedsize='true', fillcolor='#0F172A', style='filled', color='none')
+                        fixedsize='true', fillcolor='#ffffffff', style='filled', color='#00000000')
                 visited_nodes.add(qa_id)
 
             # C. 绘制边

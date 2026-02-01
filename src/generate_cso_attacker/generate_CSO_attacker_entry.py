@@ -81,7 +81,6 @@ class CSO_Attacker_Generator:
         
         #2.1 生成监督器不可观测可达集
         unobservable_reachable_supervisor = GenerateACAGFunctionTools.generate_unobserver_reach_supervisor(
-            states_closed_loop_system,
             transition_closed_loop_system,
             assumption.event_supervisor_observable,
             event_unobservable_supervisor
@@ -100,7 +99,6 @@ class CSO_Attacker_Generator:
             assumption.transition_origin_system,
             assumption.event_attacker_observable,
             assumption.state_supervisor,
-            assumption.state_initial_supervisor,
             assumption.transition_supervisor,
             event_unobservable_attacker
         )
