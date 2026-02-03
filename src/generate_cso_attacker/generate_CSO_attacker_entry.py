@@ -206,3 +206,26 @@ class CSO_Attacker_Generator:
         simplified_ACAG_graph.format='pdf'
         simplified_ACAG_graph.render("resources/cso-attacker/simplified-ACAG_pdf", cleanup=True)
         print("生成简略的ACAG图")
+        #8.2 生成简略的AO-ACAG图
+        simplified_AO_ACAG_graph,simplified_AO_ACAG_qe_map=GraphSimplyfier.draw_simplified_AO_ACAG_graph(
+            all_transition_AO_ACAG_system,
+            intial_AO_env_state,
+            lable_ACAG_map,
+            assumption.state_system_secret,
+            filename='resources/cso-attacker/simplified-AO-ACAG'
+        )
+        simplified_AO_ACAG_graph.format='pdf'
+        simplified_AO_ACAG_graph.render("resources/cso-attacker/simplified-AO-ACAG_pdf", cleanup=True)
+        print("生成简略的AO-ACAG图")
+        #8.3 生成简略的pruned AO-ACAG图
+        simplified_pruned_AO_ACAG_graph=GraphSimplyfier.draw_simplified_pruned_AO_ACAG_graph(
+            all_transition_pruned_AO_ACAG_system,
+            intial_pruned_AO_env_state,
+            lable_ACAG_map,
+            assumption.state_system_secret,
+            simplified_AO_ACAG_qe_map,
+            filename_prefix='resources/cso-attacker/simplified-pruned-AO-ACAG'
+        )
+        simplified_pruned_AO_ACAG_graph.format='pdf'
+        simplified_pruned_AO_ACAG_graph.render("resources/cso-attacker/simplified-pruned-AO-ACAG_pdf", cleanup=True)
+        print("生成简略的pruned AO-ACAG图")
