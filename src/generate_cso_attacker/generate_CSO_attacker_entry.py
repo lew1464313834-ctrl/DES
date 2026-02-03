@@ -195,12 +195,14 @@ class CSO_Attacker_Generator:
         graph_pruned_AO_ACAG_system.render("resources/cso-attacker/pruned-AO-ACAG_pdf", cleanup=True)
         #8. 生成简略的可放在论文中的图
         #8.1 生成简略的ACAG图
-        GraphSimplyfier.draw_paper_simplified_ACAG(
+        simplified_ACAG_graph,simplified_ACAG_ye_map=GraphSimplyfier.draw_simplified_ACAG_graph(
             transition_ACAG_system,
             initial_env_state,
             assumption.state_system_secret,
             labled_unobservable_reachable_supervisor,
             labled_unobservable_reachable_attacker,
-            filename="resources/cso-attacker/simplified_ACAG"
+            filename='resources/cso-attacker/simplified-ACAG'
         )
+        simplified_ACAG_graph.format='pdf'
+        simplified_ACAG_graph.render("resources/cso-attacker/simplified-ACAG_pdf", cleanup=True)
         print("生成简略的ACAG图")
