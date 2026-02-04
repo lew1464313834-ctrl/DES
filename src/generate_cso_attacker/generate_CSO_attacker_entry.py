@@ -6,6 +6,7 @@ from .generate_AO_ACAG_generator import AOACAGSystemCreater
 from .generate_pruned_AO_ACAG_generator import PrunedAOACAGSystemCreater
 from .correspond_graph_simplyfier import GraphSimplyfier
 from .system_assumption import assumption_one
+from .active_attacker_generator import AttackerGenerator
 
 assumption = assumption_one
 class CSO_Attacker_Generator:
@@ -219,15 +220,14 @@ class CSO_Attacker_Generator:
         simplified_AO_ACAG_graph.format='pdf'
         simplified_AO_ACAG_graph.render("resources/cso-attacker/simplified-AO-ACAG_pdf", cleanup=True)
         print("生成简略的AO-ACAG图")
-        #8.3 生成简略的pruned AO-ACAG图
-        simplified_pruned_AO_ACAG_graph=GraphSimplyfier.draw_simplified_pruned_AO_ACAG_graph(
+        #8.3 生成带成功值的pruned AO-ACAG图
+        AO_ACAG_graph_with_success_value=AttackerGenerator.draw_purned_AO_ACAG_with_success_value(
             all_transition_pruned_AO_ACAG_system,
-            intial_pruned_AO_env_state,
             lable_ACAG_map,
             assumption.state_system_secret,
-            simplified_AO_ACAG_qe_map,
-            filename_prefix='resources/cso-attacker/simplified-pruned-AO-ACAG'
+            lable_AOACAG_map,
+            filename='resources/cso-attacker/pruned-AO-ACAG-with-success-value'
         )
-        simplified_pruned_AO_ACAG_graph.format='pdf'
-        simplified_pruned_AO_ACAG_graph.render("resources/cso-attacker/simplified-pruned-AO-ACAG_pdf", cleanup=True)
-        print("生成简略的pruned AO-ACAG图")
+        AO_ACAG_graph_with_success_value.format='pdf'
+        AO_ACAG_graph_with_success_value.render("resources/cso-attacker/pruned-AO-ACAG-with-success-value_pdf", cleanup=True)
+        print("生成带成功值的pruned AO-ACAG图")
