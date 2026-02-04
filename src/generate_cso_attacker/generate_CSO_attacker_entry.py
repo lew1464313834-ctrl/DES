@@ -201,6 +201,8 @@ class CSO_Attacker_Generator:
             assumption.state_system_secret,
             labled_unobservable_reachable_supervisor,
             labled_unobservable_reachable_attacker,
+            assumption.event_supervisor_observable,
+            assumption.event_attacker_observable,
             filename='resources/cso-attacker/simplified-ACAG'
         )
         simplified_ACAG_graph.format='pdf'
