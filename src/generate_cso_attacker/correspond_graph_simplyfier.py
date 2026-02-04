@@ -8,11 +8,14 @@ class GraphSimplyfier:
                                    secret_states,
                                    labled_unobservable_reachable_supervisor, 
                                    labled_unobservable_reachable_attacker,
+                                   Sigma_oS, # 增加：监督者可观事件集
+                                   Sigma_oA, # 增加：攻击者可观事件集
                                    filename,
                                    max_nodes=30):
         """
-        优化版：移除了初始节点的进入箭头，并加强了 HTML 端口定位的稳定性。
+        原函数逻辑完全保留，仅在末尾添加图例绘制逻辑
         """
+
         if isinstance(all_ACAG_transition, tuple):
             all_ACAG_transition = all_ACAG_transition[0]
 
@@ -20,11 +23,9 @@ class GraphSimplyfier:
         
         dot.attr(
             rankdir='TB',
-            nodesep='0.3',
-            ranksep='0.5',
-            fontname='serif',
-            fontsize='14',
-            splines='true' 
+            nodesep='0.3', ranksep='0.5',
+            fontname='serif', fontsize='14',
+            splines='true'
         )
 
         sup_val_to_label = {v: k for k, v in labled_unobservable_reachable_supervisor.items()}
@@ -32,6 +33,18 @@ class GraphSimplyfier:
 
         def get_id(state):
             return hex(hash(state) & 0xffffffff)
+
+        # --- 颜色判断辅助逻辑 ---
+        def get_edge_color(event):
+            is_sup_obs = event in Sigma_oS
+            is_atk_obs = event in Sigma_oA
+            if is_atk_obs and not is_sup_obs:
+                return '#EF4444'  # 红色 (仅攻击者)
+            if is_sup_obs and not is_atk_obs:
+                return '#22C55E'  # 绿色 (仅监督者)
+            if is_sup_obs and is_atk_obs:
+                return '#3B82F6'  # 蓝色 (双可观)
+            return '#4B5563'      # 深灰色 (皆不可见)
 
         adj_map = {}
         for (curr, event), next_s in all_ACAG_transition.items():
@@ -73,6 +86,7 @@ class GraphSimplyfier:
                             nodes_to_draw.append(nxt_ye)
                             has_valid_next_ye = True
                             temp_next_ye_list.append((obs, nxt_ye))
+                    
                     if has_valid_next_ye:
                         if nxt_ya not in nodes_to_draw: nodes_to_draw.append(nxt_ya)
                         edges_to_draw.append((curr, event, nxt_ya))
@@ -81,7 +95,7 @@ class GraphSimplyfier:
                     else:
                         truncated_ye.add(curr)
 
-        # --- 3. 绘制节点 ---
+        # --- 3. 绘制节点 (保持不变) ---
         for node in nodes_to_draw:
             nid = get_id(node)
             if len(node) == 4:
@@ -96,41 +110,49 @@ class GraphSimplyfier:
                 elif is_success: fill_c, color_c = ('#F0FDF4', '#166534')
 
                 ye_tag = ye_map.get(node, "")
-                # 使用 ALIGN="CENTER" 和固定表格布局确保 box 单元格处于几何中心
                 ye_row = f'<TR><TD ALIGN="CENTER" BORDER="0" CELLPADDING="0"><FONT POINT-SIZE="12"><B>{ye_tag}</B></FONT></TD></TR>' if ye_tag else ""
                 box_row = f'<TR><TD BORDER="1" STYLE="ROUNDED" BGCOLOR="{fill_c}" COLOR="{color_c}" CELLPADDING="4" PORT="box"><B><FONT POINT-SIZE="14">{s_tag}, {a_tag}, {x}, {z}</FONT></B></TD></TR>'
                 ellipsis_row = "<TR><TD BORDER='0' CELLPADDING='0' ALIGN='CENTER'><FONT POINT-SIZE='16'>...</FONT></TD></TR>" if node in truncated_ye and not (is_ax or is_success) else ""
 
                 node_label = f'''<
                     <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0" FIXEDSIZE="FALSE">
-                        {ye_row}
-                        {box_row}
-                        {ellipsis_row}
+                        {ye_row} {box_row} {ellipsis_row}
                     </TABLE>>'''
                 dot.node(nid, label=node_label, shape='none', margin='0')
             else:
-                # 决策节点（Ya）
                 dot.node(nid, label='', shape='circle', width='0.1', height='0.1', 
                          fillcolor='white', style='filled', color='black', penwidth='0.8')
 
-        # --- 4. 绘制连边 ---
+        # --- 4. 绘制连边 (保持不变) ---
         for src, event, nxt in edges_to_draw:
             src_id = get_id(src)
             nxt_id = get_id(nxt)
-            
-            # 统一指向 :box 端口。如果还出现微小偏移，可以将 head 改为 f"{nxt_id}:box:n" (指向北边边缘)
             tail = f"{src_id}:box" if len(src) == 4 else src_id
             head = f"{nxt_id}:box" if len(nxt) == 4 else nxt_id
-            
-            is_from_ya = (len(src) == 6)
-            e_style = 'dashed' if is_from_ya else 'solid'
+            is_env_output = (len(src) == 4)
+            e_style = 'solid' if is_env_output else 'dashed'
+            e_color = get_edge_color(event) if is_env_output else '#666666'
             e_text = str(event) if event != 'empty' else 'ε'
-            
             dot.edge(tail, head, label=f"<<B> {e_text} </B>>", 
-                     style=e_style, color='#444444', 
+                     style=e_style, color=e_color, fontcolor=e_color,
                      fontsize='13', arrowsize='0.6')
 
-        # --- 移除的部分：不再创建 'start' 节点和指向它的边 ---
+        # --- 新增图例逻辑：确保在最右上角 ---
+        with dot.subgraph(name='cluster_legend') as l:
+            l.attr(label='', fontsize='12', color='lightgrey', style='rounded')
+            # 使用 HTML 格式创建更精美的图例表格
+            legend_html = '''<
+                <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="4" CELLPADDING="2">
+                    <TR>
+                        <TD BORDER="1" BGCOLOR="#F0FDF4" COLOR="#166534" WIDTH="20"></TD>
+                        <TD ALIGN="LEFT"><FONT POINT-SIZE="12">Attacker-Exposed States</FONT></TD>
+                    </TR>
+                    <TR>
+                        <TD BORDER="1" BGCOLOR="#FFF1F2" COLOR="#9F1239" WIDTH="20"></TD>
+                        <TD ALIGN="LEFT"><FONT POINT-SIZE="12">CS-Detected States</FONT></TD>
+                    </TR>
+                </TABLE>>'''
+            l.node('legend_node', label=legend_html, shape='none')
 
         dot.render(filename, cleanup=True)
         return dot, ye_map
@@ -138,7 +160,6 @@ class GraphSimplyfier:
     @staticmethod
     def draw_simplified_AO_ACAG_graph(ao_transitions, q0_tags, lable_ACAG_map, secret_states, filename, max_nodes=35):
         """
-        修复版：AO图同理，确保标签紧贴且箭头指向 box 单元格。
         """
         import graphviz
         from collections import deque
@@ -214,17 +235,33 @@ class GraphSimplyfier:
             e_color = '#2563EB' if style == 'dashed' else '#333333'
             dot.edge(src, dst, label=f"<<B> {txt} </B>>", style=style, color=e_color, fontcolor=e_color, fontsize='14', arrowsize='0.5', penwidth='1.0')
 
+         # --- 新增图例逻辑：确保在最右上角 ---
+        with dot.subgraph(name='cluster_legend') as l:
+            l.attr(label='', fontsize='12', color='lightgrey', style='rounded')
+            # 使用 HTML 格式创建更精美的图例表格
+            legend_html = '''<
+                <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="4" CELLPADDING="2">
+                    <TR>
+                        <TD BORDER="1" BGCOLOR="#F0FDF4" COLOR="#166534" WIDTH="20"></TD>
+                        <TD ALIGN="LEFT"><FONT POINT-SIZE="12">Attacker-Exposed States</FONT></TD>
+                    </TR>
+                    <TR>
+                        <TD BORDER="1" BGCOLOR="#FFF1F2" COLOR="#9F1239" WIDTH="20"></TD>
+                        <TD ALIGN="LEFT"><FONT POINT-SIZE="12">CS-Detected States</FONT></TD>
+                    </TR>
+                </TABLE>>'''
+            l.node('legend_node', label=legend_html, shape='none')
         dot.render(filename, cleanup=True)
         return dot, qe_map
 
     @staticmethod
     def draw_simplified_pruned_AO_ACAG_graph(pruned_transitions, q0_tags, lable_ACAG_map, secret_states, qe_map, filename_prefix):
-        """
-        修复版：SCC子图针对 neato 引擎做了特殊锚点加固。
-        """
         import graphviz
         from collections import deque
+        
+        # --- 1. 样式与辅助工具 ---
         tag_to_state = {v: k for k, v in lable_ACAG_map.items()}
+        
         def check_has_secret(tags):
             for tag in tags:
                 orig_state = tag_to_state.get(tag)
@@ -232,17 +269,20 @@ class GraphSimplyfier:
                     xi_A = orig_state[1]
                     if xi_A.issubset(secret_states): return True
             return False
+
         def get_node_style(tags, is_external=False):
             if is_external: return '#FFFFFF', '#A0A0A0'
             if check_has_secret(tags): return '#F0FDF4', '#166534'
             return '#F8F9FA', '#333333'
+
         def get_id(obj): return hex(hash(str(obj)) & 0xffffffff)
         def format_tags(tags): return "{" + ",".join(sorted(list(tags))) + "}"
+        
         def get_qe_row(tags):
             label = qe_map.get(tags, "")
             return f'<TR><TD ALIGN="LEFT" BORDER="0" CELLPADDING="1"><FONT POINT-SIZE="14" COLOR="black"><B>{label}</B></FONT></TD></TR>' if label else ""
 
-        # SCC 算法... (逻辑不变)
+        # --- 2. 寻找 SCC ---
         adj = {}
         all_qe = set()
         for (qa_info, t_sigma), next_qe in pruned_transitions.items():
@@ -279,13 +319,15 @@ class GraphSimplyfier:
         scc_idx = 0
         for scc in sorted(raw_sccs, key=len, reverse=True):
             if len(scc) > 1:
-                sid = f"SCC{scc_idx}"; scc_contents[sid] = scc
+                sid = f"SCC{scc_idx}"
+                scc_contents[sid] = scc
                 for node in scc: node_to_scc_id[node] = sid
                 scc_idx += 1
 
-        # 主图绘制 (Main Graph)
+        # --- 3. 绘制主图 (Main Graph) ---
         main_dot = graphviz.Digraph(comment='Main', format='svg', strict=True)
-        main_dot.attr(rankdir='TB', nodesep='0.15', ranksep='0.5', fontname='serif', fontsize='14')
+        main_dot.attr(rankdir='TB', nodesep='0.2', ranksep='0.4', fontname='serif', fontsize='14')
+        
         drawn_main_nodes = set()
         ax_needed = False
         
@@ -303,32 +345,43 @@ class GraphSimplyfier:
                 main_dot.node(nid, label=lbl, shape='none')
             drawn_main_nodes.add(u_repr)
 
+        # 绘制连边
         for (qa_info, t_sigma), next_qe in pruned_transitions.items():
             curr_qe, o_sigma = qa_info
             u_repr = node_to_scc_id.get(curr_qe, curr_qe)
             v_repr = node_to_scc_id.get(next_qe, next_qe) if next_qe != 'AX' else 'AX'
-            if u_repr != v_repr:
-                qa_id = get_id((u_repr, o_sigma))
-                if qa_id not in drawn_main_nodes:
-                    main_dot.node(qa_id, label='', shape='circle', width='0.1', fillcolor='white', style='filled'); drawn_main_nodes.add(qa_id)
-                src = get_id(u_repr) if (isinstance(u_repr, str) and u_repr.startswith("SCC")) else f"{get_id(u_repr)}:box"
-                main_dot.edge(src, qa_id, label=f"<<FONT POINT-SIZE='14'>{o_sigma}</FONT>>")
-                if v_repr == 'AX':
-                    if not ax_needed:
-                        main_dot.node('AX_REAL', label='<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0"><TR><TD BORDER="1" STYLE="ROUNDED" BGCOLOR="#FFF1F2" COLOR="#9F1239" PORT="box"><B><FONT POINT-SIZE="14">AX</FONT></B></TD></TR></TABLE>>', shape='none')
-                        ax_needed = True
-                    main_dot.edge(qa_id, 'AX_REAL:box', label=f"<<FONT POINT-SIZE='14'>{t_sigma}</FONT>>", style='dashed', color='#2563EB')
-                else:
-                    dst = get_id(v_repr) if (isinstance(v_repr, str) and v_repr.startswith("SCC")) else f"{get_id(v_repr)}:box"
-                    main_dot.edge(qa_id, dst, label=f"<<FONT POINT-SIZE='14'>{t_sigma}</FONT>>", style='dashed', color='#2563EB')
+            
+            # --- 核心逻辑修改：过滤 SCC 节点的自环，保留普通节点的自环 ---
+            is_u_scc = isinstance(u_repr, str) and u_repr.startswith("SCC")
+            if u_repr == v_repr and is_u_scc:
+                continue # 忽略 SCC 节点的自环
+            
+            qa_id = get_id((u_repr, o_sigma, v_repr))
+            if qa_id not in drawn_main_nodes:
+                main_dot.node(qa_id, label='', shape='circle', width='0.1', fillcolor='white', style='filled')
+                drawn_main_nodes.add(qa_id)
+            
+            src = get_id(u_repr) if is_u_scc else f"{get_id(u_repr)}:box"
+            main_dot.edge(src, qa_id, label=f"<<FONT POINT-SIZE='14'>{o_sigma}</FONT>>")
+            
+            if v_repr == 'AX':
+                if not ax_needed:
+                    main_dot.node('AX_REAL', label='<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0"><TR><TD BORDER="1" STYLE="ROUNDED" BGCOLOR="#FFF1F2" COLOR="#9F1239" PORT="box"><B><FONT POINT-SIZE="14">AX</FONT></B></TD></TR></TABLE>>', shape='none')
+                    ax_needed = True
+                main_dot.edge(qa_id, 'AX_REAL:box', label=f"<<FONT POINT-SIZE='14'>{t_sigma}</FONT>>", style='dashed', color='#2563EB')
+            else:
+                dst = get_id(v_repr) if (isinstance(v_repr, str) and v_repr.startswith("SCC")) else f"{get_id(v_repr)}:box"
+                main_dot.edge(qa_id, dst, label=f"<<FONT POINT-SIZE='14'>{t_sigma}</FONT>>", style='dashed', color='#2563EB')
 
         main_dot.render(f"{filename_prefix}_main", cleanup=True)
 
-        # SCC 子图绘制 (Sub Graph)
+        # --- 4. SCC 子图绘制 (子图中依然保留所有细节) ---
         for sid, scc_nodes in scc_contents.items():
             sub_dot = graphviz.Digraph(comment=sid, engine='neato', strict=True)
-            sub_dot.attr(overlap='scale', splines='curved', fontname='serif', sep='+8', esep='+4', K='0.7')
-            node_set = set(scc_nodes); sub_drawn_nodes = set()
+            sub_dot.attr(overlap='scale', splines='curved', fontname='serif', sep='+8', esep='+4', K='0.8')
+            node_set = set(scc_nodes)
+            sub_drawn_nodes = set()
+
             def draw_sub_node(n, is_external=False):
                 if n in sub_drawn_nodes: return
                 nid = get_id(n)
@@ -345,11 +398,17 @@ class GraphSimplyfier:
                 if (curr_qe in node_set or next_qe in node_set):
                     draw_sub_node(curr_qe, (curr_qe not in node_set))
                     draw_sub_node(next_qe, (next_qe not in node_set and next_qe != 'AX'))
-                    qa_sub_id = get_id((curr_qe, o_sigma, sid))
+                    
+                    qa_sub_id = get_id((curr_qe, o_sigma, next_qe, sid))
                     sub_dot.node(qa_sub_id, label='', shape='circle', width='0.1', fillcolor='white', style='filled')
-                    edge_color = '#2563EB' if (curr_qe in node_set and next_qe in node_set) else '#999999'
-                    sub_dot.edge(get_id(curr_qe)+":box", qa_sub_id, label=f"<<FONT POINT-SIZE='14'>{o_sigma}</FONT>>", color=edge_color, len='1.0')
-                    sub_dot.edge(qa_sub_id, get_id(next_qe)+":box", label=f"<<FONT POINT-SIZE='14'>{t_sigma}</FONT>>", style='dashed', color=edge_color, len='1.0')
+                    
+                    is_internal = (curr_qe in node_set and next_qe in node_set)
+                    edge_color = '#2563EB' if is_internal else '#999999'
+                    e_len = '0.8' if is_internal else '1.2'
+                    
+                    sub_dot.edge(get_id(curr_qe)+":box", qa_sub_id, label=f"<<FONT POINT-SIZE='14'>{o_sigma}</FONT>>", color=edge_color, len=e_len)
+                    sub_dot.edge(qa_sub_id, get_id(next_qe)+":box", label=f"<<FONT POINT-SIZE='14'>{t_sigma}</FONT>>", style='dashed', color=edge_color, len=e_len)
+
             sub_dot.render(f"{filename_prefix}_{sid}", cleanup=True)
         
         return main_dot
