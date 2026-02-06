@@ -1,3 +1,5 @@
+import graphviz
+
 class PrunedAOACAGSystemCreater:
     @staticmethod
     def generate_pruned_AO_ACAG_transition(ao_transitions, q0_tags):
@@ -47,7 +49,6 @@ class PrunedAOACAGSystemCreater:
         """
         绘制 Pruned AO-ACAG 图
         """
-        import graphviz
         dot = graphviz.Digraph(comment='Pruned AO-ACAG System', format='svg')
         
         # 全局风格配置
