@@ -1,148 +1,144 @@
 import graphviz
 import networkx as nx
+
 class AttackerGenerator:
 
     @staticmethod
-    def draw_purned_AO_ACAG_with_success_value(pruned_transitions, lable_ACAG_map, secret_states, qe_map, filename):
-        """
-        绘制带有成功值的 Pruned AO-ACAG 图 (回归原始风格)
-        风格：
-        1. 节点内部：只显示集合内容 {tags} (原始风格)。
-        2. 节点外部 (xlabel)：显示编号 qeX 和 成功值 v=...。
-        3. 优化：保留了边去重逻辑，防止连线混乱。
-        """
+    def draw_purned_AO_ACAG_graph_marked_SCC(pruned_transitions, 
+                                    lable_ACAG_map,
+                                    secret_states,
+                                    qe_map, 
+                                    filename):
 
-        # --- 1. 计算逻辑 (SCC 与 成功值) ---
+        G_analysis = nx.DiGraph()
+        victory_nodes = set()
         
-        # 建立环境节点演化图
-        G_env = nx.DiGraph()
+        def check_is_vic(tags):
+            tag_to_state = {v: k for k, v in lable_ACAG_map.items()}
+            return any(len(tag_to_state.get(t, [])) >= 2 and 
+                       tag_to_state[t][1].issubset(secret_states) and 
+                       len(tag_to_state[t][1]) > 0 for t in tags)
+
+        # 1. 建图
         for (qa_info, t_sigma), next_qe_tags in pruned_transitions.items():
-            curr_qe_tags, _ = qa_info
-            G_env.add_edge(curr_qe_tags, next_qe_tags)
+            u_qe = qa_info[0]
+            G_analysis.add_node(u_qe, kind='Qe')
+            G_analysis.add_node(qa_info, kind='Qa')
+            G_analysis.add_node(next_qe_tags, kind='Qe')
+            G_analysis.add_edge(u_qe, qa_info, role='env', label=str(qa_info[1]))
+            G_analysis.add_edge(qa_info, next_qe_tags, role='atk', label=str(t_sigma))
+            if check_is_vic(u_qe): victory_nodes.add(u_qe)
+            if check_is_vic(next_qe_tags): victory_nodes.add(next_qe_tags)
 
-        # 识别 SCC 并缩点
-        sccs = list(nx.strongly_connected_components(G_env))
-        condensed_G = nx.condensation(G_env)
-        reverse_topo_order = list(nx.topological_sort(condensed_G))[::-1]
+        can_reach_secret = set()
+        for vic in victory_nodes:
+            can_reach_secret.update(nx.ancestors(G_analysis, vic))
+            can_reach_secret.add(vic)
 
-        success_values = {} 
-        tag_to_state = {v: k for k, v in lable_ACAG_map.items()}
+        # 2. 环识别
+        all_loop_nodes = []
+        try:
+            for scc in nx.strongly_connected_components(G_analysis):
+                if len(scc) >= 2 or G_analysis.has_edge(list(scc)[0], list(scc)[0]):
+                    sub = G_analysis.subgraph(scc)
+                    for cycle in nx.simple_cycles(sub):
+                        all_loop_nodes.append(set(cycle))
+                    all_loop_nodes.append(set(scc))
+        except:
+            all_loop_nodes = [set(scc) for scc in nx.strongly_connected_components(G_analysis) if len(scc) > 0]
 
-        def is_secret_qe(tags):
-            for tag in tags:
-                orig = tag_to_state.get(tag)
-                if orig and len(orig) >= 2 and orig[1].issubset(secret_states) and len(orig[1]) > 0:
-                    return True
-            return False
+        COLORS = {'alpha': "#DC26DC", 'beta': '#D97706', 'sink': '#94A3B8', 'complex': '#16A34A'}
+        node_style_map, edge_style_map, scc_log = {}, {}, {}
 
-        # 计算成功值
-        for scc_idx in reverse_topo_order:
-            nodes_in_scc = condensed_G.nodes[scc_idx]['members']
-            scc_contains_secret = any(is_secret_qe(node) for node in nodes_in_scc)
+        def classify_loop(nodes, idx):
+            nodes = set(nodes)
+            exit_edges = [(u, v) for u, v in G_analysis.edges(nodes) if v not in nodes]
             
-            exits = []
-            for node in nodes_in_scc:
-                for neighbor in G_env.neighbors(node):
-                    if neighbor not in nodes_in_scc:
-                        exits.append(success_values[neighbor])
+            # 预计算属性
+            leads_secret = any(v in can_reach_secret for _, v in exit_edges)
+            
+            # --- 优先级 1: Alpha/Beta (结构敏感) ---
+            if exit_edges and leads_secret:
+                is_alpha = all(G_analysis.nodes[u].get('kind') == 'Qe' and G_analysis.nodes[v].get('kind') == 'Qa' for u, v in exit_edges)
+                if is_alpha: return 'alpha'
+                
+                is_beta = all(G_analysis.nodes[u].get('kind') == 'Qa' and G_analysis.nodes[v].get('kind') == 'Qe' for u, v in exit_edges)
+                if is_beta: return 'beta'
 
-            if scc_contains_secret:
-                scc_val = 1.0
-            elif not exits:
-                scc_val = 0.0
-            else:
-                m = len(exits)
-                scc_val = (max(exits) + sum(exits)) / (m + 1)
+            # --- 优先级 2: Sink (无出口或死路) ---
+            if not exit_edges or not leads_secret:
+                return 'sink'
 
-            for node in nodes_in_scc:
-                success_values[node] = scc_val
+            # --- 优先级 3: Complex ---
+            scc_log[f"Loop_{idx}"] = {"exits": len(exit_edges), "leads_secret": leads_secret}
+            return 'complex'
 
-        # --- 2. 绘图逻辑 (原始风格 + 外部标签) ---
-        dot = graphviz.Digraph(comment='Pruned AO-ACAG Success Value', format='svg')
-        
-        # 风格配置：增大 nodesep 以给外部标签留出空间
-        dot.attr(
-            rankdir='TB',
-            nodesep='0.7',  # 增大间距，防止 xlabel 遮挡
-            ranksep='0.6',
-            fontname='serif',
-            fontsize='11',
-            splines='spline',
-            forcelabels='true' # 强制显示 xlabel
-        )
+        # 排序与染色：按大小从小到大，且 Alpha/Beta 拥有最高染色优先级
+        all_loop_nodes.sort(key=len)
+        for i, nodes in enumerate(all_loop_nodes):
+            l_type = classify_loop(nodes, i)
+            color = COLORS[l_type]
+            for n in nodes:
+                # 只有当新颜色是 Alpha/Beta，或者节点还没颜色时才覆盖
+                if n not in node_style_map or color in [COLORS['alpha'], COLORS['beta']]:
+                    node_style_map[n] = color
+            for u, v in G_analysis.edges(nodes):
+                if v in nodes:
+                    if (u, v) not in edge_style_map or color in [COLORS['alpha'], COLORS['beta']]:
+                        edge_style_map[(u, v)] = color
 
-        def get_id(obj): return hex(hash(str(obj)) & 0xffffffff)
-        
-        def format_tags(tags):
-            return "{" + ",".join(sorted(list(tags))) + "}"
+        # --- 3. 绘图 (去重过滤) ---
+        dot = graphviz.Digraph(comment='SCC Prioritized Graph', format='svg')
+        dot.attr(rankdir='TB')
 
-        visited_nodes = set()
-        visited_edges = set() 
+        # 图例更新顺序
+        legend_content = f'''<
+        <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+          <TR><TD COLSPAN="2" BORDER="0"><B>SCC Classification</B></TD></TR>
+          <TR><TD WIDTH="30" BGCOLOR="{COLORS['alpha']}"></TD><TD ALIGN="LEFT">1. Alpha-SCC </TD></TR>
+          <TR><TD WIDTH="30" BGCOLOR="{COLORS['beta']}"></TD><TD ALIGN="LEFT">2. Beta-SCC </TD></TR>
+          <TR><TD WIDTH="30" BGCOLOR="{COLORS['sink']}"></TD><TD ALIGN="LEFT">3. Sink-SCC</TD></TR>
+          <TR><TD WIDTH="30" BGCOLOR="{COLORS['complex']}"></TD><TD ALIGN="LEFT">4. Complex-SCC</TD></TR>
+        </TABLE>>'''
+        dot.node('legend', label=legend_content, shape='none')
+
+        def get_safe_id(obj): return f"n_{abs(hash(str(obj)))}"
+
+        drawn_nodes, drawn_edges = set(), set()
 
         for (qa_info, t_sigma), next_qe_tags in pruned_transitions.items():
-            curr_qe_tags, o_sigma = qa_info
-            
-            curr_id = get_id(curr_qe_tags)
-            next_id = get_id(next_qe_tags)
-            qa_id = get_id(qa_info)
+            u_qe = qa_info[0]
+            u_id, qa_id, v_id = get_safe_id(u_qe), get_safe_id(qa_info), get_safe_id(next_qe_tags)
 
-            # A. 绘制 Qe 节点
-            for tags, node_id in [(curr_qe_tags, curr_id), (next_qe_tags, next_id)]:
-                if node_id not in visited_nodes:
-                    val = success_values.get(tags, 0.0)
-                    is_vic = is_secret_qe(tags)
-                    
-                    # 样式设置 (完全保留原始 style)
-                    fill_c = '#DCFCE7' if is_vic else '#F8F9FA'
-                    color_c = '#166534' if is_vic else '#475569'
-                    pen_w = '2.0' if is_vic else '1.0'
-                    
-                    # 获取编号和值
-                    qe_label = qe_map.get(tags, "qe?")
-                    val_str = f"{int(val)}" if val in [0.0, 1.0] else f"{val:.2f}"
-                    
-                    # 构造外部标签 (xlabel)：上方编号，下方数值
-                    # 使用 HTML 格式控制颜色和加粗
-                    xlabel_html = f'''<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
-                        <TR><TD><B>{qe_label}</B></TD></TR>
-                        <TR><TD><FONT COLOR="#2563EB" POINT-SIZE="14">v={val_str}</FONT></TD></TR>
-                    </TABLE>>'''
+            # 节点去重绘制
+            for node_obj, nid, kind in [(u_qe, u_id, 'Qe'), (next_qe_tags, v_id, 'Qe'), (qa_info, qa_id, 'Qa')]:
+                if nid not in drawn_nodes:
+                    b_color = node_style_map.get(node_obj, '#475569')
+                    if kind == 'Qe':
+                        is_vic = check_is_vic(node_obj)
+                        dot.node(nid, label="{" + ",".join(sorted(list(map(str, node_obj)))) + "}",
+                                 xlabel=str(qe_map.get(node_obj, "")), shape='rectangle', style='filled, rounded',
+                                 fillcolor='#DCFCE7' if is_vic else '#F8F9FA', color=b_color, 
+                                 penwidth='2.5' if b_color in [COLORS['alpha'], COLORS['beta']] else '1.2')
+                    else:
+                        dot.node(nid, label='', shape='circle', width='0.15', style='filled',
+                                 fillcolor='black' if b_color == '#475569' else b_color, color=b_color)
+                    drawn_nodes.add(nid)
 
-                    # 节点内部只显示 tags
-                    label_text = f'<<B>{format_tags(tags)}</B>>'
+            # 边去重绘制
+            edge_configs = [
+                (u_id, qa_id, str(qa_info[1]), 'env', u_qe, qa_info),
+                (qa_id, v_id, str(t_sigma), 'atk', qa_info, next_qe_tags)
+            ]
 
-                    dot.node(node_id, 
-                            label=label_text,       # 内部：集合
-                            xlabel=xlabel_html,     # 外部：编号+数值
-                            shape='rectangle', 
-                            style='filled, rounded', 
-                            fillcolor=fill_c, 
-                            color=color_c,
-                            penwidth=pen_w,
-                            margin='0.1,0.05')
-                    visited_nodes.add(node_id)
+            for sid, did, lab, role, s_obj, d_obj in edge_configs:
+                edge_key = (sid, did, lab, role)
+                if edge_key not in drawn_edges:
+                    e_c = edge_style_map.get((s_obj, d_obj), '#1E293B' if role=='env' else '#2563EB')
+                    dot.edge(sid, did, label=f" {lab} ", color=e_c, fontcolor=e_c, 
+                             style='solid' if role=='env' else 'dashed',
+                             penwidth='1.8' if e_c in [COLORS['alpha'], COLORS['beta']] else '1.0')
+                    drawn_edges.add(edge_key)
 
-            # B. 绘制 Qa 节点 (小圆圈)
-            if qa_id not in visited_nodes:
-                dot.node(qa_id, label='', shape='circle', width='0.1', height='0.1', 
-                        fixedsize='true', fillcolor='#ffffffff', style='filled', color='#00000000')
-                visited_nodes.add(qa_id)
-
-            # C. 绘制连线 (去重)
-            
-            # 1. Qe -> Qa (环境观测)
-            edge_key1 = (curr_id, qa_id, o_sigma)
-            if edge_key1 not in visited_edges:
-                dot.edge(curr_id, qa_id, label=f" {o_sigma} ", 
-                         fontname='serif', fontsize='10', color='#1E293B')
-                visited_edges.add(edge_key1)
-
-            # 2. Qa -> Qe (攻击决策)
-            edge_key2 = (qa_id, next_id, t_sigma)
-            if edge_key2 not in visited_edges:
-                dot.edge(qa_id, next_id, label=f" {t_sigma} ", 
-                         fontname='serif:bold', fontsize='10', 
-                         style='dashed', color='#2563EB', fontcolor='#2563EB', arrowsize='0.7')
-                visited_edges.add(edge_key2)
         dot.render(filename, cleanup=True)
-        return dot
+        return dot, scc_log

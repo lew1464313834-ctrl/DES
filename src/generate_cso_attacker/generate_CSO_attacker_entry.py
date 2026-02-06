@@ -221,13 +221,16 @@ class CSO_Attacker_Generator:
         simplified_AO_ACAG_graph.render("resources/cso-attacker/simplified-AO-ACAG_pdf", cleanup=True)
         print("生成简略的AO-ACAG图")
         #8.3 生成带成功值的pruned AO-ACAG图
-        AO_ACAG_graph_with_success_value=AttackerGenerator.draw_purned_AO_ACAG_with_success_value(
+        marked_SCC_pruned_AO_ACAG_graph,all_SCC=AttackerGenerator.draw_purned_AO_ACAG_graph_marked_SCC(
             all_transition_pruned_AO_ACAG_system,
             lable_ACAG_map,
             assumption.state_system_secret,
             lable_AOACAG_map,
-            filename='resources/cso-attacker/pruned-AO-ACAG-with-success-value'
+            filename='resources/cso-attacker/marked-SCC-pruned-AO-ACAG'
         )
-        AO_ACAG_graph_with_success_value.format='pdf'
-        AO_ACAG_graph_with_success_value.render("resources/cso-attacker/pruned-AO-ACAG-with-success-value_pdf", cleanup=True)
-        print("生成带成功值的pruned AO-ACAG图")
+        marked_SCC_pruned_AO_ACAG_graph.format='pdf'
+        marked_SCC_pruned_AO_ACAG_graph.render("resources/cso-attacker/marked-SCC-pruned-AO-ACAG_pdf", cleanup=True)
+        print("生成标记SCC的pruned AO-ACAG图")
+        app_logger.info("所有的pruned ACAG SCC:")
+        for scc,nodes in all_SCC.items():
+            app_logger.info(f'{scc}: {nodes}')
